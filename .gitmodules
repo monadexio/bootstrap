@@ -1,0 +1,3 @@
+[submodule "google-web-starter-kit"]
+	path = google-web-starter-kit
+	url = git@github.com:google/web-starter-kit.git
