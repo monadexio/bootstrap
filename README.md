@@ -26,6 +26,10 @@ All roads lead to Rome, the question is which one is the shortest. We
 wanna use the coolest and most fun technology that does the job the
 quickest. Sometimes, taking a ride is not bad either.
 
-  * AngularJs
-  * KrakenJs
-  * SpreeCommerce
+  * [AngularJs](https://angularjs.org/)
+  * [KrakenJs](http://krakenjs.com/)
+  * [SpreeCommerce](http://spreecommerce.com/)
+
+There are a great deal of stuff that we can borrow from the Spree
+project, from business to architectural design to API design. See
+their [documentation](http://guides.spreecommerce.com/api/)
