@@ -24,7 +24,7 @@ at the time of writing, the site look like this:
 
 All roads lead to Rome, the question is which one is the shortest. We
 wanna use the coolest and most fun technology that does the job the
-quickest. Sometimes, taking a ride is not bad either.
+quickest. Sometimes, taking a free ride is not a bad idea either.
 
   * [AngularJs](https://angularjs.org/)
   * [KrakenJs](http://krakenjs.com/)
