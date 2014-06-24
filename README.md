@@ -19,3 +19,13 @@ at the time of writing, the site look like this:
   * Finally the campaign page with a permanent URL which user can distribute either to their own websites or whatever channel they prefer (wechat, Facebook, etc)
   * Customers will be asked about the size of the shirt, shipping address, email, creditcard details, etc, when attempting to buy t-shirts
   * Users can use admin dashboard to manage all the campains he has (CRUD operations).
+
+### Resources
+
+All roads lead to Rome, the question is which one is the shortest. We
+wanna use the coolest and most fun technology that does the job the
+quickest. Sometimes, taking a ride is not bad either.
+
+  * AngularJs
+  * KrakenJs
+  * SpreeCommerce
