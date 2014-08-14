@@ -1,9 +1,10 @@
 Job description
 ---------------
-We are seeking for an expert in HTML/CSS with strong knowledge and
-application of modern design styles and technologies. If you have strong
-experience with HTML5 technologies, CSS3 latest features and a sincere
-interest in front-end web application design, write us a line.
+We are seeking for an expert in HTML/JavaScript/CSS with strong
+knowledge and application of modern design styles and technologies.
+If you have strong experience with HTML5 technologies, JavaScript
+programming language, CSS3 latest features and a sincere interest in
+front-end web application design, write us a line.
 
 Main duties
 -----------
