@@ -12,10 +12,11 @@ Things we're looking for
 ------------------------
 - Good knowledge of at least one programming language (C/C++, Java, Scala,
   Python, Ruby, Javascript)
-- Knowledge of node.js is a plus
-- UNIX experience
+- Knowledge of express.js and node.js is a plus
+- LINUX experience
 - Experience with databases and distributed systems is a plus
 - Experience with machine learning and data mining is a plus
+- Experience with various virtualization technology is a plus
 - Extraordinary software engineering talent - you can figure out what
   are the right algorithms and data structures for the task at hand, and
   you can come up with elegant OOP solutions
@@ -25,3 +26,4 @@ Benefits & perks
 - flexible working hours
 - competitive salary
 - fun (but challenging) working environment
+- sign bonus (50% of your month salary)
