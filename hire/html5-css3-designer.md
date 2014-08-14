@@ -27,3 +27,8 @@ Skills required
 - Strong knowledge of Image Editing Tools (Photoshop/Fireworks)
 - Understanding of web standards
 - Experience with angular.js is a plus
+
+i don't have much to add here. but Frontend development is becoming
+more and more serious and so testing should not be ignored. If you
+find someone who's kinda serious about testing their frontend code
+then maybe it is a good sign.
