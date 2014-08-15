@@ -27,3 +27,5 @@ Skills required
 - Strong knowledge of Image Editing Tools (Photoshop/Fireworks)
 - Understanding of web standards
 - Experience with angular.js is a plus
+- Experience with test driven development is a plus
+- Experience with Mocha, Karma, and Jasmine test frameworks is a plus
