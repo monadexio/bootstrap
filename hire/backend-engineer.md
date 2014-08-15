@@ -28,3 +28,8 @@ Benefits & perks
 - competitive salary
 - fun (but challenging) working environment
 - signing bonus (50% of your month salary)
+
+Who we are
+----------
+We are a third party payment company based in Shanghai, and going to
+expand our international payment business.
