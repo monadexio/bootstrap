@@ -31,5 +31,5 @@ Benefits & perks
 
 Who we are
 ----------
-We are a third party payment company based in Shanghai, and going to
+We are a famous third party payment company based in Shanghai, and going to
 expand our international payment business.
