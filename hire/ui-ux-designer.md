@@ -21,3 +21,10 @@ Experience
 ----------
 We're looking for somebody who has at least 3+ years of UI/UX design
 experience. Please don't apply if you are just getting started.
+
+Benefits & perks
+----------------
+- flexible working hours
+- competitive salary
+- fun (but challenging) working environment
+- signing bonus (50% of your month salary)

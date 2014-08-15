@@ -29,3 +29,10 @@ Skills required
 - Experience with angular.js is a plus
 - Experience with test driven development is a plus
 - Experience with Mocha, Karma, and Jasmine test frameworks is a plus
+
+Benefits & perks
+----------------
+- flexible working hours
+- competitive salary
+- fun (but challenging) working environment
+- signing bonus (50% of your month salary)
