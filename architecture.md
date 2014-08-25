@@ -6,11 +6,13 @@ uniform language throughout our stack.
 ## MongoDB
 Key Features
 - High Performance
+
   MongoDB provides high performance data persistence. In particular,
     - Support for embedded data models reduces I/O activity on database system.
     - Indexes support faster queries and can include keys from embedded documents and arrays.
 
 - High Availability
+
   To provide high availability, MongoDB’s replication facility, called replica sets, provide:
     - automatic failover.
     - data redundancy.
@@ -19,6 +21,7 @@ Key Features
   set, providing redundancy and increasing data availability.
 
 - Automatic Scaling
+
   MongoDB provides horizontal scalability as part of its core functionality.
 
     - Automatic sharding distributes data across a cluster of machines.
