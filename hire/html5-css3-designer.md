@@ -1,43 +1,55 @@
-Job description
----------------
-We are seeking for an expert in HTML/JavaScript/CSS with strong
-knowledge and application of modern design styles and technologies.
-If you have strong experience with HTML5 technologies, JavaScript
-programming language, CSS3 latest features and a sincere interest in
-front-end web application design, write us a line.
+### 职位描述
+- 熟练掌握 HTML5/Javascript/CSS
+- 应用最新技术来开发我们的前端应用
+- 把 Photoshop/Fireworks 设计稿变成代码
+- 开发像素精确的页面来满足设计需求
+- 保持用户体验的一致性
+- 实时应用最新的互联网开发技术
+- 保证浏览器兼容性
+- 完成日常的 HTML/JavaScript/CSS 任务
 
-Main duties
------------
-- Translate mock up Photoshop/Fireworks images to code
-- Develop pixel perfect pages that meet design requirements
-- Keep consistency of user experience design
-- Keep the site up-to-date with the latest web technologies
-- Manage scalable and cross-browser code across the site
-- Completing day to day HTML/JavaScript/CSS tasks
+### 职位要求
+- 深度掌握 Javascript
+- 跨浏览器／跨平台开发
+- 保证网页响应速度
+- 熟悉布局，字体，可用性的最佳实践
+- 熟练掌握 HTML5/XHTML
+- 注重细节
+- 熟练掌握 CSS2.1/CSS3
+- 熟练使用图片编辑工具如 Photoshop,Fireworks
+- 掌握网页设计标准
+- 有 angular.js 使用经验
+- 有测试驱动开发经验
+- 有 Mocha, Karma, and Jasmine 等测试框架使用经验
+- 充满好奇心，激情，责任心，干实事
 
-Skills required
----------------
-- Deep knowledge of JavaScript
-- Cross-Browser/Cross-Platform Development
-- Experience in modern web techniques and responsive design
-- Familiar with design best practice for layouts, typography and usability
-- Fluency in HTML5/XHTML
-- Good attention to detail
-- Mastering CSS2.1/CSS3
-- Strong knowledge of Image Editing Tools (Photoshop/Fireworks)
-- Understanding of web standards
-- Experience with angular.js is a plus
-- Experience with test driven development is a plus
-- Experience with Mocha, Karma, and Jasmine test frameworks is a plus
+### 薪资福利
+- 弹性工作制
+- 有竞争力的薪酬(8k-20k)
+- 有趣并充满挑战的工作环境
+- 半月工资的签约奖金
 
-Benefits & perks
-----------------
-- flexible working hours
-- competitive salary
-- fun (but challenging) working environment
-- signing bonus (50% of your month salary)
+### 我们是谁
+我们是一家上海的著名三方支付公司，正在寻求拓展我们的跨境支付业务。
 
-Who we are
-----------
-We are a famous third party payment company based in Shanghai, and going to
-expand our international payment business.
+### 公司简介
+- 上海讯联数据服务有限公司（讯联数据）是支付领域的第三方服务提供商
+- 公司专注为国际卡组织、银行、第三方支付机构提供完整的支付服务解决方案，包括：
+    - 银联卡收单处理
+    - 多渠道网上支付处理
+    - 国际卡收单处理
+    - 多渠道支付网关
+    - 预付卡发卡处理
+    - 代收付业务接口
+    - 跨境支付服务平台
+    - 支付创新合作
+    - 运营处理服务
+    - 行业资讯服务
+
+### 我们的优势
+- 一线风投投资的支付领域的第三方服务提供商
+- 公司管理层具有多年支付行业实践经验，能深刻理解国内外支付行业的发展和运营
+- 公司核心组成员来自银联、万事达、百度、腾讯、快的等知名企业
+- 大莱卡在中国大陆的第一个接口服务提供商
+- 国际卡品牌 JCB 在此领域合作的国内首家第三方处理机构
+- 银联认证的渠道接入服务商，处理银联卡的境外 POS 交易

@@ -1,35 +1,41 @@
-Job description
----------------
-We are seeking a talented UI/UX Designer with a passion for designing
-user interfaces and experiences for the web, mobile, email and social to
-join our mighty team & help us design & refine the interface for our new
-web app. Our app is a groundbreaking technological & design achievement
-in international payment. And we need you to make it even better.
+### 职位描述
+- 充满激情的天才设计师
+- 精通网页，移动端界面及交互设计
 
-Things we're looking for
-------------------------
-- First and foremost, you should have an excellent eye for design. You
-  should know great web UI when you see it, and be able to explain why
-  it's great (even if you didn't create it!).
-- You'll need to be a fast in one design software: preferably an Adobe one.
-- You should have at least a working knowledge of XHTML/CSS.
-- Finally, you should have a solid portfolio of web and mobile
-  application design. We want to see that you've built great web
-  interfaces before, not just great websites.
+### 职位要求
+- 具备一双慧眼，能够一眼识别出优秀的网页界面设计，并能解释为什么它很优秀
+- 必须熟练使用至少一种设计软件，最好是 Adobe 系列
+- 掌握必须的 XHTML/CSS
+- 具备坚实的网页和移动端设计经验，并设计过优秀网页界面
+- 充满好奇心，激情，责任心，干实事
 
-Experience
-----------
-We're looking for somebody who has at least 3+ years of UI/UX design
-experience. Please don't apply if you are just getting started.
+### 薪资福利
+- 弹性工作制
+- 有竞争力的薪酬(8k-20k)
+- 有趣并充满挑战的工作环境
+- 半月工资的签约奖金
 
-Benefits & perks
-----------------
-- flexible working hours
-- competitive salary
-- fun (but challenging) working environment
-- signing bonus (50% of your month salary)
+### 我们是谁
+我们是一家上海的著名三方支付公司，正在寻求拓展我们的跨境支付业务。
 
-Who we are
-----------
-We are a famous third party payment company based in Shanghai, and going to
-expand our international payment business.
+### 公司简介
+- 上海讯联数据服务有限公司（讯联数据）是支付领域的第三方服务提供商
+- 公司专注为国际卡组织、银行、第三方支付机构提供完整的支付服务解决方案，包括：
+    - 银联卡收单处理
+    - 多渠道网上支付处理
+    - 国际卡收单处理
+    - 多渠道支付网关
+    - 预付卡发卡处理
+    - 代收付业务接口
+    - 跨境支付服务平台
+    - 支付创新合作
+    - 运营处理服务
+    - 行业资讯服务
+
+### 我们的优势
+- 一线风投投资的支付领域的第三方服务提供商
+- 公司管理层具有多年支付行业实践经验，能深刻理解国内外支付行业的发展和运营
+- 公司核心组成员来自银联、万事达、百度、腾讯、快的等知名企业
+- 大莱卡在中国大陆的第一个接口服务提供商
+- 国际卡品牌 JCB 在此领域合作的国内首家第三方处理机构
+- 银联认证的渠道接入服务商，处理银联卡的境外 POS 交易

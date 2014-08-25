@@ -1,35 +1,44 @@
-Job description
----------------
-We are currently looking for backend engineers. Come join us if you're
-passionate about data, coding, payment, big data sets and scalable
-architectures. You'll be working in a lean startup environment with
-really flexible work hours and rewarding challenges. As part of the
-backend team, you'll be in charge of developing and maintaining
-our backend services. This means designing & implementing new
-systems, while making sure they are scalable, robust and manageable.
+### 职位描述
+- 热爱数据，编程，支付和弹性架构
+- 负责用 node.js 开发和维护我们的后台应用
+- 设计和实现新系统，并确保其稳定，可管理，可扩展
 
-Things we're looking for
-------------------------
-- Good knowledge of at least one programming language (C/C++, Java, Scala,
-  Python, Ruby, Javascript)
-- Knowledge of express.js and node.js is a plus
-- LINUX experience
-- Experience with databases and distributed systems is a plus
-- Experience with machine learning and data mining is a plus
-- Experience with various virtualization technology is a plus
-- Extraordinary software engineering talent - you can figure out what
-  are the right algorithms and data structures for the task at hand, and
-  you can come up with elegant solutions
-- Curious, passionate, responsible and a can-do attitud
+### 职位要求
+- 至少熟悉一门语言(C/C++, Java, Scala, Python, Ruby, Javascript)
+- 最好熟悉 node.js 及各种框架如 express.js, passport.js, connect.js
+- 熟练呢使用 LINUX
+- 具备数据库和分布式系统开发经验
+- 熟悉各种常用虚拟化技术如 lxc, kvm, docker
+- 极佳的软件工程天分，能用正确简短优雅的代码解决手上的任务
+- 充满好奇心，激情，责任心，干实事
 
-Benefits & perks
-----------------
-- flexible working hours
-- competitive salary
-- fun (but challenging) working environment
-- signing bonus (50% of your month salary)
+### 薪资福利
+- 弹性工作制
+- 有竞争力的薪酬(8k-20k)
+- 有趣并充满挑战的工作环境
+- 半月工资的签约奖金
 
-Who we are
-----------
-We are a famous third party payment company based in Shanghai, and going to
-expand our international payment business.
+### 我们是谁
+我们是一家上海的著名三方支付公司，正在寻求拓展我们的跨境支付业务。
+
+### 公司简介
+- 上海讯联数据服务有限公司（讯联数据）是支付领域的第三方服务提供商
+- 公司专注为国际卡组织、银行、第三方支付机构提供完整的支付服务解决方案，包括：
+    - 银联卡收单处理
+    - 多渠道网上支付处理
+    - 国际卡收单处理
+    - 多渠道支付网关
+    - 预付卡发卡处理
+    - 代收付业务接口
+    - 跨境支付服务平台
+    - 支付创新合作
+    - 运营处理服务
+    - 行业资讯服务
+
+### 我们的优势
+- 一线风投投资的支付领域的第三方服务提供商
+- 公司管理层具有多年支付行业实践经验，能深刻理解国内外支付行业的发展和运营
+- 公司核心组成员来自银联、万事达、百度、腾讯、快的等知名企业
+- 大莱卡在中国大陆的第一个接口服务提供商
+- 国际卡品牌 JCB 在此领域合作的国内首家第三方处理机构
+- 银联认证的渠道接入服务商，处理银联卡的境外 POS 交易
