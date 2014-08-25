@@ -38,11 +38,15 @@ Key Features
 - Data-binding, syncing, templating, components and much, much more
 
 ## Payment channels supported
+
 Standard
+
 - UPOP
 - ChinaPay
 - SndaPay
+
 Express Pay
+
 - UPOP Express Pay
 - VISA/MASTER Express Pay
 - Wechat build-in channel
