@@ -40,9 +40,10 @@ refuse-mschap
 require-mschap-v2
 # Require MPPE 128-bit encryption
 # (note that MPPE requires the use of MSCHAP-V2 during authentication)
-require-mppe-128
+#require-mppe-128
 # }}}
 
+require-mppe-40
 
 
 
@@ -57,8 +58,8 @@ require-mppe-128
 # client. See KB311218 in Microsoft's knowledge base for more information.
 #ms-dns 10.0.0.1
 #ms-dns 10.0.0.2
-# ms-dns 8.8.8.8
-# ms-dns 8.8.4.4
+#ms-dns 8.8.8.8
+#ms-dns 8.8.4.4
 ms-dns 208.67.222.222
 ms-dns 208.67.220.220
 
@@ -109,14 +110,14 @@ nodefaultroute
 lock
 
 # Disable BSD-Compress compression
-nobsdcomp
+#nobsdcomp
 
 # Disable Van Jacobson compression
 # (needed on some networks with Windows 9x/ME/XP clients, see posting to
 # poptop-server on 14th April 2005 by Pawel Pokrywka and followups,
 # http://marc.theaimsgroup.com/?t=111343175400006&r=1&w=2 )
-novj
-novjccomp
+#novj
+#novjccomp
 
 # turn off logging to stderr, since this may be redirected to pptpd,
 # which may trigger a loopback
