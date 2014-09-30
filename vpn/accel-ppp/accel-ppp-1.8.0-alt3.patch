@@ -58,6 +58,14 @@
  accel-pppd/triton/triton.h               |   2 +-
  accel-pppd/triton/triton_p.h             |   2 +
  accel-pppd/utils.c                       |   3 +-
+ alt-linux/IPoE_dhcp_lua_ru.txt           |  69 ++++++
+ alt-linux/IPoE_ru.txt                    | 384 +++++++++++++++++++++++++++++++
+ alt-linux/accel-ppp.init                 | 105 +++++++++
+ alt-linux/accel-ppp.logrotate            |   7 +
+ alt-linux/accel-ppp.spec                 | 198 ++++++++++++++++
+ alt-linux/accel-ppp.sysconfig            |   5 +
+ alt-linux/accel-ppp.tmpfiles             |   2 +
+ alt-linux/memdenug.txt                   |   5 +
  cmake/debian/debian.cmake                |  12 +-
  drivers/ipoe/ipoe.c                      | 316 +++++++++++++++++++++----
  drivers/ipoe/ipoe.h                      |   2 +
@@ -4854,6 +4862,829 @@ index 45e8709..81b4c99 100644
  }
  
  int __export u_readlong(long int *dst, const char *src,
+diff --git a/alt-linux/IPoE_dhcp_lua_ru.txt b/alt-linux/IPoE_dhcp_lua_ru.txt
+new file mode 100644
+index 0000000..465f4db
+--- /dev/null
++++ b/alt-linux/IPoE_dhcp_lua_ru.txt
+@@ -0,0 +1,69 @@
++Использование LUA для формирования имени пользователя на основе DHCP пакета
++
++Для этого необходимо:
++
++    собрать accel-ppp с поддержкой lua: cmake -DLUA=TRUE
++    в кофиге указать:
++
++     [ipoe]
++     lua-file=имя_файла
++     username=lua:имя_функции
++
++    например
++
++     [ipoe]
++     lua-file=/etc/accel-ppp.lua
++     username=lua:username
++
++    в /etc/accel-ppp.lua пишем:
++
++    function username(pkt)
++        v,b1,b2,b3,b4=string.unpack(pkt:agent_remote_id():sub(-4),'bbbb')
++        ip=b1..'.'..b2..'.'..b3..'.'..b4
++        v,port=string.unpack(string.sub(pkt:agent_circuit_id(),'-1'),'b')
++        local username=ip..'-'..port
++    --    print(username)
++        return username
++    end
++
++этот скрипт подходит для разбора опции 82 коммутаторов Dlink.
++
++Объект pkt имеет следующие функции:
++
++hdr(name)
++    Возвращает значение поля в заголовке пакета DHCP
++    name может принимать следующие значения: xid, ciaddr, giaddr, chaddr. 
++ifname()
++    Возвращает имя интерфейса принявшего пакет. 
++options()
++    Возвращает таблицу содержащую номера DHCP опций в принятом пакете. 
++option(num)
++    Возвращает значение опции с номером num. 
++agent_circuit_id()
++    Возвращает значение agent_circuit_id опции 82. 
++agent_remote_id()
++    Возвращает значение agent_remote_id опции 82. 
++
++Все функции за исключением options() возвращают string.
++
++Так-же для удобства разбора бинарных данных в состав accel-ppp включен пакет lpack
++Он добавляет к объекту string дополнительную функцию unpack(binary, fmt), где binary -
++это строка содержащая бинарные данные, а fmt - формат этих данных. В fmt можно указать
++следующие типы данных:
++
++z - zero terminated string
++p - string precended by length byte
++P - string precended by length word
++f - float
++d - double
++c - int8_t
++b - uint8_t
++h - int16_t
++H - uint16_t
++i - int32_t
++I - uint32_t
++l - int64_t
++L - uint64_t
++< - little endian
++> - big endian
++= - native endian
+diff --git a/alt-linux/IPoE_ru.txt b/alt-linux/IPoE_ru.txt
+new file mode 100644
+index 0000000..0df5241
+--- /dev/null
++++ b/alt-linux/IPoE_ru.txt
+@@ -0,0 +1,384 @@
++На данный момент поддерживаются L2 и L3 способы связи с клиентами. Старт
++сессии по DHCP Discover и неклассифицированному пакету. Для реализации
++старта сессии по неклассифицированному пакету и использования общего
++интерфейса разработан вспомогательный модуль ядра. Модуль ядра для
++каждой сессии (кроме vlan-per-user) создаёт виртуальный интерфейс,
++аналог ifb.
++
++Этот интерфейс используется для шейпера и задания белого ип (нат).
++
++Функциональное отличие L2 от L3, заключается в том что в случае L2
++входящий пакет будет проверяться на совпадение mac адреса установленного
++при старте сессии, а исходящие пакеты будут отправляться прямиком на
++этот mac адрес, без дополнительных запросов ARP, что обеспечивает
++защиту от подмены IP/mac адресов. В случае L3 исходящий пакет будет
++маршрутизироваться согласно установленным правилам маршрутизации.
++
++
++Общий обзор конфигурационного файла
++
++[ipoe]
++
++    verbose=n
++	Если n больше нуля то будут генерироваться более подробные логи. 
++
++    username=ifname|lua:имя_функции
++	Эта опция определяет как будет определяться имя пользователя.
++	Если username=ifname, то именем пользователя будет имя интерфейса
++	с которого пришел запрос.
++	Если username==lua:имя_функции, то имя пользователя должна будет
++	сформировать функция имя_функции (подробнее описано ниже). По
++	умолчанию для DHCP сессий username=ifname, для сессий "по
++	неклассифицированному пакету" - IP адрес клиента.
++
++    password=username|empty|пароль
++	Определяет как будет формироваться пароль.
++        Если password=username - то пароль будет соотвествовать username.
++	password=empty - пароль будет пустой.
++	password=пароль - пароль, соотвествеено, задаётся строкой пароль.
++
++    lua-file=имя_файла
++	Указывает имя файла с lua скриптом, который используется для
++	написания вспомогательных функций.
++
++    lease-time=n
++	Эта опция указывает время аренды (в секундах) которое будет
++	отправлено DHCP клиентам.
++
++    max-lease-time=n
++	Указывает время по истечении которого сессия будет прервана, если
++	от DHCP клиента не было запрос на продление аренды.
++
++    unit-cache=n
++	Так-же как и для ppp эта опция используется для уменьшения
++	негативного эффекта от низкой скорости создания и удаления
++	интерфейсов (актуально только для сессий которые используют
++	вспомогательный модуль ядра).
++	Смысл в том что после завершения сессии интерфейс не удаляется а
++	помещается в кэш, так что новые сессии могут его использовать повторно.
++
++    l4-redirect-table=n
++	Задаёт номер таблицы для L4-redirect (подробнее рассмотрено ниже).
++
++    l4-redirect-ipset=наименование
++	Задаёт наименование ipset списка для L4-redirect (подробнее рассмотрено ниже).
++
++    agent-remote-id=идентификатор
++	В случае если accel-ppp работает в качестве релея, то в DHCP запросы
++	будет вставляться опция 82 с указанным agent-remote-id и agent-circuit-id
++	с именем интерфейса с которого пришел запрос. 
++
++    shared=0|1
++
++    mode=L2|L3
++
++    start=dhcpv4|up
++
++    ifcfg=0|1
++
++    relay=адрес
++
++    giaddr=адрес
++
++    proxy-arp=0|1
++	Эти параметры задают значения по умолчанию для по-интерфейсного конфига (см. ниже).
++
++    interface=[re:]ifname[,shared=0|1][,mode=L2|L3][,start=dhcpv4|up][,ifcfg=0|1][,range=сеть/маска][,relay=адрес][,giaddr=адрес]
++	Эта опция указывает какие интерфейсы использовать для связи с клиентами
++	(для ожидания DHCP и неклассифицированных пакетов). Можно указывать
++	несколько этих опций.
++
++	Если перед ifname стоит префикс re:, то ifname интерпретируется как
++	регулярное выражение, таким образом одной опцией можно указать множество
++	интерфейсов.
++
++	shared=0|1 - указывает доступно ли через этот интерфейс несколько
++	             клиентов, либо может быть только один (в случае
++	             vlan-per-user).
++
++	mode=L2|L3 - указывает вид связи, L2 - клиенты находятся в одной сети
++	             что и интерфейс, L3 - клиенты находятся за маршрутизатором.
++
++	start=dhcpv4|up - указывает каким образом запускать сессию, dhcpv4 - по
++	                  DHCP Discover, up - по неклассифицированному пакету.
++
++	ifcfg=0|1 - указывает должен ли accel-ppp управлять назначением ип
++	            адресов и маршрутов на интерфейсе, либо он сконфигурирован
++	            внешне (подробнее описано ниже).
++
++	range=сеть/маска - указывает локальный пул адресов для DHCP клиентов в
++	                   случае если accel-ppp выдаёт адреса, первый адрес
++	                   сети будет считаться адресом маршрутизатора (более
++	                   подробно описано ниже).
++
++	relay=адрес - указывает адрес DHCP сервера на который нужно перенаправлять
++	              запросы. Так-же необходимо указать giaddr
++
++	giaddr=адрес - указывает свой адрес релей агента (Relay Agent IP Address).
++	               Если ifcfg=1 то этот адрес будет добавлен на интерфейс при
++	               старте. Так-же при старте должен существовать маршрут
++	               giaddr<-->relay
++
++	proxy-arp=0-2 - указывает должен ли accel-ppp отвечать на arp запросы.
++	                Подробнее описано ниже
++
++    local-net=сеть/маска
++	Указывает список сетей пакеты которых будут считаться неклассифицированными.
++	Можно указывать несколько таких опций. 
++
++    attr-dhcp-client-ip=атрибут
++	Указывает в каком радиус атрибуте передаётся ип адрес клиента (актуально
++	только для DHCP).
++
++    attr-dhcp-router-ip=атрибут
++	Указывает в каком радиус атрибуте передаётся ип адрес маршрутизатора
++	(актуально только для DHCP).
++
++    attr-dhcp-mask=атрибут
++	Указывает в каком радиус атрибуте передаётся маска сети (актуально
++	только для DHCP). 
++
++    attr-l4-redirect=атрибут
++	Указывает в каком радиус атрибуте передаётся информация об необходимости
++	добавить правило для L4-redirect (подробнее описано ниже).
++
++    proto=номер
++	Задаёт номер протокола с которым будут добавляться маршруты (по
++	умлочанию 3 - boot).
++
++    offer-delay=задежка[,задержка:кол-во[,задежка:кол-во[,...]]]
++	Задаёт задержку или задержки DHCPOFFER в зависимости от количества
++	активных сессий (в милисекундах).
++	Последняя задержка в списке может иметь значение -1, что означает не
++	принимать новых соединений.
++	Список должен быть отсортирован в порядке возрастания количества сессий.
++
++    vlan-mon=[re:]ifname[,список_вланов]
++	Эта опция запускает монитор вланов на указаном интерфейсе (работает
++	при поддержки модуля в ядре ipoe)
++
++	список_вланов - указывает список допустимых вланов в форме
++	                vlan-mon=eth1,5,7,9,100-200
++
++	В случае появления пакета на интерфейсе в указанных вланах accel-ppp
++	будет создавать вланы в форме eth1.XXX и применять к ним настройки
++	из опции interface c подходящим именем интерфейса
++
++	После окончания сессии или по таймаутут (если сессия не была запущена)
++	accel-ppp будет удалять созданные вланы. 
++
++
++Использование LUA для формирования имени пользователя на основе DHCP пакета
++
++Описано в IPoE_dhcp_lua_ru.txt
++
++
++Варианты использования
++
++L2-connected, старт по DHCP Discover, общий интерфейс
++
++Предположим, что клиенты находятся на интерфейсах vlan2, vlan3, vlan4.
++Перед запуском accel-ppp эти интерфейсы должны быть подняты.
++Далее возможны два варианта: интерфейсы конфигурируются вручную (ifcfg=0),
++либо это делает accel-ppp (ifcfg=1)
++Если делегировать эту функцию accel-ppp, то он при старте сессии будет
++добавлять на интерфейс адрес siaddr с маской 32 и маршрут yiaddr src siaddr.
++
++
++1. локальные адреса раздаёт локальный пул
++
++[ipoe]
++    mode=L2
++    shared=1
++    start=dhcpv4
++    ifcfg=0 или 1 (см. выше)
++    interface=vlan2,range=192.168.1.0/24
++    interface=vlan3,range=192.168.2.0/24
++    interface=vlan4,range=192.168.3.0/24
++    lua-file=/etc/accel-ppp.lua
++    username=lua:username
++
++Так-же следует отметить что в качестве адреса сервера (роутера) будет выбран
++первый адрес из пула, т.е. 192.168.1.1 для vlan2, 192.168.2.1 для vlan3 и
++192.168.3.1 для vlan4.
++
++Клиентам будет отправлена маска /24.
++
++
++2. адреса выдаёт радиус
++
++[ipoe]
++    mode=L2
++    shared=1
++    start=dhcpv4
++    ifcfg=0 или 1 (см. выше)
++    interface=re:^vlan[2-4]$
++    attr-dhcp-cleint-ip=DHCP-Client-IP-Address
++    attr-dhcp-router-ip=DHCP-Router-IP-Address
++    attr-dhcp-mask=DHCP-Mask
++    lua-file=/etc/accel-ppp.lua
++    username=lua:username
++
++Т.к. эти атрибуты нестандартные их нужно добавить в словарь радиус атрибутов, например так:
++
++ATTRIBUTE DHCP-Client-IP-Address 240 ipaddr
++ATTRIBUTE DHCP-Router-IP-Address 241 ipaddr
++ATTRIBUTE DHCP-Mask              242 integer
++
++
++3. информацию для клиента выдаёт внешний DHCP сервер
++
++[ipoe]
++    mode=L2
++    shared=1
++    start=dhcpv4
++    ifcfg=0 или 1 (см. выше)
++    relay=172.16.7.8
++    agent-remote-id=accel-ppp
++    interface=vlan2,giaddr=192.168.1.1
++    interface=vlan3,giaddr=192.168.2.1
++    interface=vlan4,giaddr=192.168.3.1
++    lua-file=/etc/accel-ppp.lua
++    username=lua:username
++
++Для каждой сессии будут создаваться псевдоинтерфейсы типа vlan2.ipoe0,vlan2.ipoe1 и т.д.
++
++Если радиус (или локальный пул) выдаст внешний ип, то он будет назначен на этот
++псевдоинтерфейс и с помощью него будет осуществляться NAT.
++
++Так-же если радиус выдаст параметры для шейпера, то он будет сконфигурирован на этом псевдоинтерфейсе.
++
++
++L2-connected, старт по DHCP Discover, vlan-per-user
++
++Возможны два варианта: ip-unnumbered, либо обычный локальный ип + NAT.
++Варианты конфигурации аналогичны предыдущим, за исключением того что нужно
++заменить shared=0. В случае ip-unnumbered вспомогательный модуль ядра не
++требуется, клиенту локальный IP выдавать не нужно, нужно выдать только белый IP.
++Так-же в случае ip-unnumbered можно использовать имя интерфейса в качестве имени пользователя:
++
++[ipoe]
++    username=ifname
++
++
++
++L2/L3-connected, старт по неклассифицированному пакету
++
++В этом случае в качестве имени пользователя будет использован IP адрес отправителя пакета.
++Адреса которые будут считаться неклассифицированными указываеются в local-net.
++
++[ipoe]
++    mode=L2 или L3
++    shared=1
++    start=up
++    interface=re:^vlan[2-4]$
++    local-net=192.168.0.0/24
++    local-net=192.168.1.0/24
++
++
++
++Гибридная конфигурация
++
++Предусмотрена возможность установки для каждого интерфейса индивидуальных параметров.
++
++Например, требуется на интерфейсе vlan2 использовать L2, запуск по DHCP Discover,
++локальный пул адресов, на vlan3 - L2, запуск по DHCP, запросы релееить на внешний
++сервер, на vlan4 - L3, запуск по неклассифицированному пакету:
++
++[ipoe]
++    mode=L2
++    shared=1
++    start=dhcpv4
++    ifcfg=0 или 1 (см. выше)
++    lua-file=/etc/accel-ppp.lua
++    username=lua:username
++    interface=vlan2,range=192.168.1.0/24
++    interface=vlan3,relay=172.16.7.8,giaddr=192.168.2.1
++    interface=vlan4,mode=L3,start=up
++
++
++
++L4-redirect
++
++L4-redirect может осуществляться тремя способами:
++1. через Framed-Pool (либо выдачу адреса из сети для которой будет
++   осуществляться перенаправление)
++
++Для этого нужно в конфиге указать специальный пул адресов, например:
++
++[ippool]
++172.16.16.253/23,name=l4-redirect
++
++Задать для этой сети правило
++
++ip rule add from 172.16.16.253/24 table l4-redirect
++ip route add default via л4_сервер table l4-redirect
++
++либо
++
++iptables -t nat -A PREROUTING -p tcp --dport 80 -j DNAT --to-destination л4_сервер
++
++Таки образом для клиентов которым нужно организовать перенаправление радиус должен
++прислать атрибут Framed-Pool=l4-redirect, либо Framed-IP-Address с адресом из этой
++сети.
++
++Так-же, в случае DHCP, имеет смысл установить небольшое время жизни сессии с помощью
++атрибута Session-Timeout=300 чтобы обеспечить переавторизацию.
++
++Если DHCP не используется, то адрес можно изменить с помощью CoA.
++
++
++2. с помощью специального радиус атрибута
++
++В этом случае если в кофиге указана l4-redirect-table для клиентов будут создаваться правила
++
++ip rule add from адрес_клиента table таблица
++
++если в конфиге указано l4-redirect-ipset, то адреса клиентов будут добавляться в
++указаный ipset список.
++
++Для этого нужно в конфиге указать атрибут через который будет приходить информация,
++а так-же номер таблицы или наименование ipset списка, например:
++
++[ipoe]
++    attr-l4-redirect=L4-Redirect
++    l4-redirect-table=100
++либо
++    l4-redirect-ipset=l4-redirect
++
++Т.к. этот атрибут нестандартный его нужно добавить в словарь радиус атрибутов, например так:
++
++ATTRIBUTE L4-Redirect              242 integer
++
++Атрибут может быть integer или string.
++Для integer любое значение больше нуля считается что нужно включить l4-redirect, 0 - выключить.
++
++Для string любая строка начинающаяся на 0, либо пустая строка - выключить, иначе включить.
++
++
++3. Access-Reject от радиуса
++Что-бы включить этот режим нужно указать l4-redirect-on-reject= кол-во секунд
++
++[ipoe]
++    l4-redirect-on-reject=300
++    l4-redirect-table=100
++либо
++    l4-redirect-ipset=l4-redirect
++
++В этом случае если радиус ответит запретом будет создано правило
++
++    ip rule add from адрес_клиента table 100
++
++либо адрес будет добавлен в ipset список
++и удалено по истечению 300 секунд, после чего будет осуществлена повторная попытка авторизации.
++
++
++PROXY ARP
++
++proxy-arp работает следующим образом:
++1. при получении запроса accel-ppp проверяет пришел ли запрос от авторизованного ип или нет
++2. если запрос пришел от неавторизованного ип, то accel-ppp не отвечает
++3. если от авторизованного, то проверяется наличие сессии запрашиваемого ип на интерфейсе с которого пришел запрос
++4. если сессия найдена (т.е. запрашиваемый клиент находится на том-же интерфейсе и он ответит сам), то accel-ppp не отвечает
++5. иначе accel-ppp отвечает мак адресом интерфейса
++для корректной работы proxy-arp необходимо отлючить ядерный proxy-arp на рабочих интерфейсах
+diff --git a/alt-linux/accel-ppp.init b/alt-linux/accel-ppp.init
+new file mode 100644
+index 0000000..6641821
+--- /dev/null
++++ b/alt-linux/accel-ppp.init
+@@ -0,0 +1,105 @@
++#!/bin/sh
++#
++### BEGIN INIT INFO
++# Provides:       accel-pppd
++# Required-Start: $network $syslog
++# Should-Start:
++# Required-Stop:
++# Default-Start:
++# Default-Stop:
++# Description:    start/stop accel-ppp server
++### END INIT INFO
++
++# accel-pppd	accel-ppp server
++#
++# chkconfig: - 88 10
++# description:	start/stop accel-ppp server
++#
++# processname: accel-pppd
++# config: /etc/accel-ppp.conf
++# pidfile: /var/run/accel-pppd.pid
++
++# Source function library.
++. /etc/init.d/functions
++
++if test -f /etc/sysconfig/accel-ppp; then
++    . /etc/sysconfig/accel-ppp
++fi
++
++PIDFILE=/var/run/accel-pppd.pid
++LOCKFILE=/var/lock/subsys/accel-ppp
++RETVAL=0
++
++if [ -z "$ACCEL_PPPD_OPTS" ]; then
++  ACCEL_PPPD_OPTS="-c /etc/accel-ppp.conf"
++fi
++
++start()
++{
++    if [ ! -f /var/run/accel-ppp/seq ]; then
++	echo "0" > /var/run/accel-ppp/seq
++    fi
++
++    start_daemon --pidfile "$PIDFILE" --lockfile "$LOCKFILE" --expect-user root -- accel-pppd -- -d -p $PIDFILE $ACCEL_PPPD_OPTS
++    RETVAL=$?
++    return $RETVAL
++}
++
++
++stop()
++{
++    stop_daemon --pidfile "$PIDFILE" --lockfile "$LOCKFILE" --expect-user root accel-pppd
++    RETVAL=$?
++    return $RETVAL
++}
++
++reload() {
++    msg_reloading accel-pppd
++    stop_daemon --pidfile "$PIDFILE" --expect-user root -HUP accel-pppd
++    RETVAL=$?
++    return $RETVAL
++}
++
++
++case "$1" in
++    start)
++	start
++	;;
++    restart)
++	stop
++	sleep 180
++	start
++	;;
++    reload)
++	reload
++	;;
++    stop)
++	stop
++	;;
++    status)
++	status --pidfile "$PIDFILE" --expect-user root accel-pppd
++        RETVAL=$?
++	;;
++    condstop)
++	if [ -e "$LOCKFILE" ]; then
++	    stop
++	fi
++	;;
++    condrestart)
++	if [ -e "$LOCKFILE" ]; then
++	    stop
++	    start
++	fi
++	;;
++    condreload)
++	if [ -e "$LOCKFILE" ]; then
++	    reload
++	fi
++	;;
++    *)
++        msg_usage "${0##*/} {start|stop|restart|status}"
++        RETVAL=1
++    ;;
++esac
++
++exit 0
+diff --git a/alt-linux/accel-ppp.logrotate b/alt-linux/accel-ppp.logrotate
+new file mode 100644
+index 0000000..42819e5
+--- /dev/null
++++ b/alt-linux/accel-ppp.logrotate
+@@ -0,0 +1,7 @@
++/var/log/accel-ppp/*.log {
++    missingok
++    sharedscripts
++    postrotate
++	test -r /var/run/accel-pppd.pid && kill -HUP `cat /var/run/accel-pppd.pid`
++    endscript
++}
+diff --git a/alt-linux/accel-ppp.spec b/alt-linux/accel-ppp.spec
+new file mode 100644
+index 0000000..e7fb6af
+--- /dev/null
++++ b/alt-linux/accel-ppp.spec
+@@ -0,0 +1,198 @@
++Name: accel-ppp
++Version: 1.8.0
++Release: alt3
++Summary: High performance PPTP/L2TP/PPPoE server
++Group: System/Servers
++
++Packager: Alexei Takaseev <taf@altlinux.ru>
++
++License: GPLv2
++Url: http://sourceforge.net/projects/accel-ppp/
++Source0: %name-%version.tar
++Patch0: %name-%version-%release.patch
++Requires: snmp-mibs-std
++AutoProv: yes
++
++BuildRequires: cmake libnet-snmp-devel libpcre-devel libnl-devel libssl-devel liblua5-devel glibc-kernheaders
++BuildPreReq: rpm-build-kernel
++
++%description
++The ACCEL-PPP is completly new implementation of PPTP/PPPoE/L2TP
++which was written from scratch. Userspace daemon has its own PPP
++implementation, so it does not uses pppd and one process (multi-threaded)
++manages all connections. ACCEL-PPP uses only kernel-mode implementations
++of pptp/l2tp/pppoe.
++
++Features:
++- IPoE server
++- PPTP server
++- PPPoE server
++- L2TPv2 server
++- Radius CoA/DM (PoD)
++- Built-in shaper (htb)
++- Command line interface (telnet)
++- SNMP
++- IPv6 (including builtin Neighbor Discovery and DHCPv6)
++
++%package -n kernel-source-%name
++Summary: Kernel module for accel-ppp IPoE
++License: GPLv2
++Group: Development/Kernel
++BuildArch: noarch
++
++%description -n kernel-source-%name
++Provide accel-ppp ipoe kernel module
++
++
++%prep
++%setup
++%patch0 -p1
++tar -cjf ../%name-%version.tar.bz2 ../%name-%version
++
++%build
++%cmake \
++      -DCMAKE_SKIP_RPATH:BOOL=FALSE \
++      -DCMAKE_SKIP_INSTALL_RPATH:BOOL=FALSE \
++      -DBUILD_DRIVER=FALSE \
++      -DCMAKE_INSTALL_PREFIX=%prefix \
++      -DRADIUS=TRUE \
++      -DNETSNMP=TRUE \
++      -DLOG_PGSQL=FALSE \
++      -DLUA=TRUE \
++      -DBUILD_INSTALL_PREFIX=%buildroot \
++      -DCMAKE_BUILD_TYPE=Debug \
++      -DMEMDEBUG=TRUE
++
++%cmake_build
++
++%install
++make install/fast DESTDIR=%buildroot -C BUILD
++
++install -Dpm 644 alt-linux/%name.tmpfiles %buildroot%_tmpfilesdir/%name.conf
++install -d %buildroot%_sysconfdir/{rc.d/init.d,sysconfig,logrotate.d}
++install -pDm0644 alt-linux/%name.sysconfig	%buildroot%_sysconfdir/sysconfig/%name
++install -pDm0755 alt-linux/%name.init		%buildroot%_initdir/%name
++install -pDm0644 alt-linux/%name.logrotate	%buildroot%_sysconfdir/logrotate.d/%name
++
++mkdir -p %kernel_srcdir
++install -pDm0644 ../%name-%version.tar.bz2 %kernel_srcdir/%name-%version.tar.bz2
++
++%post
++%post_service %name
++
++%preun
++%preun_service %name
++
++%files
++%doc COPYING README accel-pppd/extra/net-snmp/ACCEL-PPP-MIB.txt alt-linux/IPoE_ru.txt alt-linux/IPoE_dhcp_lua_ru.txt
++%config(noreplace) %_initdir/*
++%config(noreplace) %_sysconfdir/sysconfig/*
++%config %_sysconfdir/logrotate.d/*
++%config(noreplace) %_tmpfilesdir/*
++%_sysconfdir/accel-ppp.conf.dist
++%_bindir/accel-cmd
++%_sbindir/accel-pppd
++%_libdir/%name
++%_datadir/accel-ppp/
++%_mandir/man1/accel-cmd*
++%_mandir/man5/accel-ppp.conf.5*
++%_runtimedir/accel-ppp/
++%_logdir/accel-ppp/
++
++%files -n kernel-source-%name
++%attr(0644,root,root) %kernel_src/%name-%version.tar.bz2
++
++%changelog
++* Mon Sep 01 2014 Alexei Takaseev <taf@altlinux.org> 1.8.0-alt3
++- update upstream to git:ec9968885ed2f273c4d2c18297986c463fb9cf9b
++
++* Tue Aug 05 2014 Alexei Takaseev <taf@altlinux.org> 1.8.0-alt2
++- update upstream to git:2cdd67782c6d11af141992dba2943e03134593b5
++
++* Fri May 09 2014 Alexei Takaseev <taf@altlinux.org> 1.8.0-alt1
++- 1.8.0
++
++* Tue Apr 22 2014 Alexei Takaseev <taf@altlinux.org> 1.8.0-alt0.beta.2
++- update upstream to git:b1a4c68fa51d69283deb9e22c370349ee36d3cca
++
++* Mon Apr 14 2014 Alexei Takaseev <taf@altlinux.org> 1.8.0-alt0.beta.1
++- Build with IPoE
++
++* Mon Apr 14 2014 Alexei Takaseev <taf@altlinux.org> 1.7.3-alt8
++- update upstream to git:0d5e6d03c74f3ab6b83d2333480b2441df9a6522
++    * ppp: don't unconditionaly load pppoe/pptp/l2tp modules,
++      fixes false start warning if they're running already
++    * pppoe: check for tag format validity in PADR messages
++    * increase size of buffer for netlink messages
++
++* Wed Nov 20 2013 Alexei Takaseev <taf@altlinux.org> 1.7.3-alt7
++- Fix rpath
++
++* Sat Nov 09 2013 Alexei Takaseev <taf@altlinux.org> 1.7.3-alt6
++- update upstream to git:da7bb06e70252ba11751f4e3a9f8b97144500d9e
++    * fixed sigsegv in 'shaper restore all'
++    * fixed socket leak
++    * fixed many race conditions
++
++* Sat Aug 10 2013 Alexei Takaseev <taf@altlinux.org> 1.7.3-alt5
++- auth_chap: fixed incorrect check for received buffer size
++- triton: Fix race upon termination
++
++* Thu Jul 04 2013 Alexei Takaseev <taf@altlinux.org> 1.7.3-alt4
++- update to git:b77ca8764985ebae18d769cdf115e2242bbac98d
++
++* Wed Jun 05 2013 Alexei Takaseev <taf@altlinux.org> 1.7.3-alt3
++- Move tmpfiles.d from etc to %%_tmpfilesdir/
++
++* Sun Jun 02 2013 Alexei Takaseev <taf@altlinux.org> 1.7.3-alt2
++- update to git:3cc23d37c3c93ca7240f52fe5121513bcd6c3db8
++
++* Tue Dec 11 2012 Alexei Takaseev <taf@altlinux.org> 1.7.3-alt1
++- 1.7.3
++
++* Sat Nov 03 2012 Alexei Takaseev <taf@altlinux.org> 1.7.2-alt4
++- ppp: force to send dns
++
++* Thu Oct 18 2012 Alexei Takaseev <taf@altlinux.org> 1.7.2-alt3
++- remove unresolved=relaxed
++
++* Thu Oct 04 2012 Alexei Takaseev <taf@altlinux.org> 1.7.2-alt2
++- Add log messages for terminate sessions
++
++* Thu Sep 06 2012 Alexei Takaseev <taf@altlinux.org> 1.7.2-alt1
++- 1.7.2
++
++* Tue Aug 28 2012 Alexei Takaseev <taf@altlinux.org> 1.7.1-alt2
++- fix build with glibc-2.16
++
++* Mon Jul 30 2012 Alexei Takaseev <taf@altlinux.org> 1.7.1-alt1
++- 1.7.1
++
++* Sat Jun 30 2012 Alexei Takaseev <taf@altlinux.org> 1.7.0-alt2
++- Build git 20120630
++
++* Mon Jun 18 2012 Alexei Takaseev <taf@altlinux.org> 1.7.0-alt1
++- 1.7.0
++
++* Mon Jun 11 2012 Alexei Takaseev <taf@altlinux.org> 1.6.1-alt7
++- update upstream to git:fa315a7a7584f6f4954888c010e3cc84c2b33330
++
++* Sun May 27 2012 Alexei Takaseev <taf@altlinux.org> 1.6.1-alt6
++- Fix underlinked libraries for libnet-snmp.so
++
++* Fri May 18 2012 Alexei Takaseev <taf@altlinux.org> 1.6.1-alt5
++- update upstream to git:cf358fcdc57dd52d30ca490b1164d832cf11fe8b
++- add config for systemd-tmpfiles
++
++* Mon Apr 30 2012 Alexei Takaseev <taf@altlinux.org> 1.6.1-alt4
++- fix deadlock interface when restart service
++
++* Sat Apr 21 2012 Alexei Takaseev <taf@altlinux.org> 1.6.1-alt3
++- quoted username in log messages
++- Add username to disconnect log messages
++
++* Wed Apr 04 2012 Alexei Takaseev <taf@altlinux.org> 1.6.1-alt2
++- add MIB file
++
++* Sun Mar 25 2012 Alexei Takaseev <taf@altlinux.org> 1.6.1-alt1
++- Initial RPM release
+diff --git a/alt-linux/accel-ppp.sysconfig b/alt-linux/accel-ppp.sysconfig
+new file mode 100644
+index 0000000..ff2a18a
+--- /dev/null
++++ b/alt-linux/accel-ppp.sysconfig
+@@ -0,0 +1,5 @@
++# Config file for /etc/init.d/accel-ppp
++
++# Any extra options you want to pass to aceel-pptpd
++# on start-up should be put here.
++ACCEL_PPPD_OPTS="-c /etc/accel-ppp.conf"
+diff --git a/alt-linux/accel-ppp.tmpfiles b/alt-linux/accel-ppp.tmpfiles
+new file mode 100644
+index 0000000..1f1a31a
+--- /dev/null
++++ b/alt-linux/accel-ppp.tmpfiles
+@@ -0,0 +1,2 @@
++d /var/run/accel-ppp 0755 root root -
++f /var/run/accel-ppp/seq 0644 root root -
+diff --git a/alt-linux/memdenug.txt b/alt-linux/memdenug.txt
+new file mode 100644
+index 0000000..23a2cbe
+--- /dev/null
++++ b/alt-linux/memdenug.txt
+@@ -0,0 +1,5 @@
++1. надо собрать с -DMEMDEBUG=TRUE
++2. запустить accel-pppd в screen без демонизации, т.е. без -d: accel-pppd -c /etc/accel-ppp.conf > /var/log/accel-ppp/memdebug.log
++3. в удобное время суток сбросить все коннекты и желательно не допускать новых
++4. в момент когда все коннекты будут сброшены (ну или их будет минимальное количество) выполнить: killall -35 accel-pppd; killall -36 accel-pppd; killall accel-pppd
++5. запустить в нормальном режиме 
 diff --git a/cmake/debian/debian.cmake b/cmake/debian/debian.cmake
 index 5ba44c8..c02a4a4 100644
 --- a/cmake/debian/debian.cmake
