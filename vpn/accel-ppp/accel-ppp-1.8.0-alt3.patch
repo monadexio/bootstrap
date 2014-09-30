@@ -1,0 +1,5523 @@
+ .gear/rules                              |   3 +
+ .gear/tags/list                          |   1 +
+ accel-pppd/CMakeLists.txt                |   7 +-
+ accel-pppd/accel-ppp.conf                |  11 +-
+ accel-pppd/accel-ppp.conf.5              |  27 ++-
+ accel-pppd/auth/auth_chap_md5.c          |  46 ++--
+ accel-pppd/auth/auth_mschap_v1.c         |  42 ++--
+ accel-pppd/auth/auth_mschap_v2.c         |  45 ++--
+ accel-pppd/auth/auth_pap.c               |   5 +
+ accel-pppd/cli/cli.h                     |   2 +-
+ accel-pppd/cli/tcp.c                     |   6 +-
+ accel-pppd/cli/telnet.c                  |   6 +-
+ accel-pppd/ctrl/ipoe/CMakeLists.txt      |   2 +-
+ accel-pppd/ctrl/ipoe/arp.c               |   8 +-
+ accel-pppd/ctrl/ipoe/dhcpv4.c            |  64 +++---
+ accel-pppd/ctrl/ipoe/ipoe.c              | 282 ++++++++++++++---------
+ accel-pppd/ctrl/ipoe/ipoe.h              |   6 +-
+ accel-pppd/ctrl/ipoe/ipoe_netlink.c      |  74 +++++-
+ accel-pppd/ctrl/ipoe/lua.c               |  14 +-
+ accel-pppd/ctrl/l2tp/l2tp.c              |  12 +-
+ accel-pppd/ctrl/pppoe/pppoe.c            |  77 +++++--
+ accel-pppd/ctrl/pptp/pptp.c              |   6 +-
+ accel-pppd/extra/ippool.c                |  60 ++++-
+ accel-pppd/extra/ipv6pool.c              |  88 +++++--
+ accel-pppd/extra/net-snmp/CMakeLists.txt |   3 +-
+ accel-pppd/extra/pppd_compat.c           |   4 +-
+ accel-pppd/ifcfg.c                       |  61 ++++-
+ accel-pppd/include/ap_session.h          |   6 +-
+ accel-pppd/ipv6/dhcpv6.c                 | 190 ++++++---------
+ accel-pppd/ipv6/dhcpv6.h                 |  44 ++--
+ accel-pppd/ipv6/nd.c                     |  29 ++-
+ accel-pppd/libnetlink/iputils.c          |  40 +++-
+ accel-pppd/libnetlink/iputils.h          |   4 +-
+ accel-pppd/log.c                         |  23 +-
+ accel-pppd/logs/log_file.c               | 297 +++++++++++-------------
+ accel-pppd/logs/log_pgsql.c              |   8 +-
+ accel-pppd/logs/log_syslog.c             |   4 +-
+ accel-pppd/logs/log_tcp.c                |   9 +-
+ accel-pppd/memdebug.c                    |   4 +-
+ accel-pppd/ppp/lcp_opt_magic.c           |  34 ++-
+ accel-pppd/ppp/ppp.c                     |  16 +-
+ accel-pppd/ppp/ppp_auth.c                |  13 +-
+ accel-pppd/radius/acct.c                 |  92 +++++---
+ accel-pppd/radius/auth.c                 |  26 ++-
+ accel-pppd/radius/dm_coa.c               |   3 +-
+ accel-pppd/radius/packet.c               |   4 +-
+ accel-pppd/radius/radius.c               |  28 ++-
+ accel-pppd/radius/radius_p.h             |   5 +-
+ accel-pppd/radius/req.c                  |  17 +-
+ accel-pppd/radius/serv.c                 |  30 ++-
+ accel-pppd/session.c                     |  37 ++-
+ accel-pppd/shaper/shaper.c               |   2 +-
+ accel-pppd/triton/md.c                   |  40 ++--
+ accel-pppd/triton/mempool.c              |   9 +-
+ accel-pppd/triton/spinlock.h             |  22 +-
+ accel-pppd/triton/timer.c                |   8 +-
+ accel-pppd/triton/triton.c               |  53 +++--
+ accel-pppd/triton/triton.h               |   2 +-
+ accel-pppd/triton/triton_p.h             |   2 +
+ accel-pppd/utils.c                       |   3 +-
+ cmake/debian/debian.cmake                |  12 +-
+ drivers/ipoe/ipoe.c                      | 316 +++++++++++++++++++++----
+ drivers/ipoe/ipoe.h                      |   2 +
+ 71 files changed, 2344 insertions(+), 827 deletions(-)
+
+diff --git a/.gear/rules b/.gear/rules
+new file mode 100644
+index 0000000..3231f0e
+--- /dev/null
++++ b/.gear/rules
+@@ -0,0 +1,3 @@
++spec: alt-linux/accel-ppp.spec
++tar: @version@:.
++diff: @version@:. .
+diff --git a/.gear/tags/list b/.gear/tags/list
+new file mode 100644
+index 0000000..2eb6e7b
+--- /dev/null
++++ b/.gear/tags/list
+@@ -0,0 +1 @@
++7466e7f10fb4813a6112682dff13de5fbdd981a7 1.8.0
+diff --git a/accel-pppd/CMakeLists.txt b/accel-pppd/CMakeLists.txt
+index 7a016ef..e2b1cf7 100644
+--- a/accel-pppd/CMakeLists.txt
++++ b/accel-pppd/CMakeLists.txt
+@@ -50,6 +50,7 @@ INCLUDE(CheckIncludeFile)
+ CHECK_INCLUDE_FILE("linux/netfilter/ipset/ip_set.h" HAVE_IPSET)
+ 
+ ADD_EXECUTABLE(accel-pppd
++	memdebug.c
+ 	session.c
+ 	session_backup.c
+ 	ifcfg.c
+@@ -93,7 +94,6 @@ ADD_EXECUTABLE(accel-pppd
+ 
+ 	log.c
+ 	main.c
+-	memdebug.c
+ )
+ 
+ TARGET_LINK_LIBRARIES(accel-pppd triton rt pthread ${crypto_lib} pcre)
+@@ -111,7 +111,8 @@ INSTALL(FILES accel-ppp.conf.5 DESTINATION share/man/man5)
+ IF (NOT DEFINED CPACK_TYPE)
+ 	INSTALL(FILES accel-ppp.conf DESTINATION ${CMAKE_FIND_ROOT_PATH}/etc RENAME accel-ppp.conf.dist)
+ 
+-	INSTALL(CODE "EXECUTE_PROCESS(COMMAND mkdir -p ${CMAKE_FIND_ROOT_PATH}/var/log/accel-ppp)")
+-	INSTALL(CODE "EXECUTE_PROCESS(COMMAND mkdir -p ${CMAKE_FIND_ROOT_PATH}/var/lib/accel-ppp)")
++	INSTALL(CODE "EXECUTE_PROCESS(COMMAND mkdir -p ${BUILD_INSTALL_PREFIX}/var/log/accel-ppp)")
++	INSTALL(CODE "EXECUTE_PROCESS(COMMAND mkdir -p ${BUILD_INSTALL_PREFIX}/var/run/accel-ppp)")
++	INSTALL(CODE "EXECUTE_PROCESS(COMMAND 'echo 0 > ${BUILD_INSTALL_PREFIX}/var/run/accel-ppp/seq')")
+ ENDIF (NOT DEFINED CPACK_TYPE)
+ 
+diff --git a/accel-pppd/accel-ppp.conf b/accel-pppd/accel-ppp.conf
+index f399361..af10c44 100644
+--- a/accel-pppd/accel-ppp.conf
++++ b/accel-pppd/accel-ppp.conf
+@@ -70,11 +70,12 @@ verbose=1
+ #service-name=yyy
+ #pado-delay=0
+ #pado-delay=0,100:100,200:200,-1:500
+-#ifname-in-sid=called-sid
++called-sid=mac
+ #tr101=1
+ #padi-limit=0
+ #ip-pool=pppoe
+ #interface=eth1,padi-limit=1000
++#sid-uppercase=0
+ interface=eth0
+ 
+ [l2tp]
+@@ -107,6 +108,7 @@ shared=0
+ ifcfg=1
+ mode=L2
+ start=dhcpv4
++#ip-unnumbered=1
+ #proxy-arp=0
+ #nat=0
+ #proto=100
+@@ -114,6 +116,7 @@ start=dhcpv4
+ #attr-dhcp-client-ip=DHCP-Client-IP-Address
+ #attr-dhcp-router-ip=DHCP-Router-IP-Address
+ #attr-dhcp-mask=DHCP-Mask
++#attr-dhcp-lease-time=DHCP-Lease-Time
+ #attr-l4-redirect=L4-Redirect
+ #local-net=192.168.0.0/16
+ #lua-file=/etc/accel-ppp.lua
+@@ -138,10 +141,7 @@ interface=eth0
+ nas-identifier=accel-ppp
+ nas-ip-address=127.0.0.1
+ gw-ip-address=192.168.100.1
+-#auth-server=127.0.0.1:1812,testing123 (obsolete)
+-#acct-server=127.0.0.1:1813,testing123 (obsolete)
+-#server=127.0.0.1,testing123 (obsolete)
+-server=127.0.0.1,testing123,auth-port=1812,acct-port=1813,req-limit=0,fail-time=0
++server=127.0.0.1,testing123,auth-port=1812,acct-port=1813,req-limit=0,fail-time=0,weight=1
+ dae-server=127.0.0.1:3799,testing123
+ verbose=1
+ #timeout=3
+@@ -149,6 +149,7 @@ verbose=1
+ #acct-timeout=120
+ #acct-delay-time=0
+ #acct-on=0
++#attr-tunnel-type=My-Tunnel-Type
+ 
+ [client-ip-range]
+ 10.0.0.0/8
+diff --git a/accel-pppd/accel-ppp.conf.5 b/accel-pppd/accel-ppp.conf.5
+index bf7b999..965116f 100644
+--- a/accel-pppd/accel-ppp.conf.5
++++ b/accel-pppd/accel-ppp.conf.5
+@@ -447,8 +447,17 @@ Specifies mac-filter filename and type, type maybe
+ or
+ .B deny
+ .TP
+-.BI "ifname-in-sid=" called-sid|calling-sid|both
+-Specifies that interface name should be present in Called-Station-ID or in Calling-Station-ID or in both attributes.
++.BI "called-sid=" ifname|mac|ifname:mac
++Specifies how to represent Called-Station-ID.
++.br
++.B ifname 
++- Called-Station-ID will contain name of interface accepted request.
++.br
++.B mac
++- Called-Station-ID will contain mac address of interface accepted request.
++.br
++.B ifname:mac
++- Called-Station-Id will contain both name and mac of interface.
+ .TP
+ .BI "verbose=" n
+ If this option is given and 
+@@ -569,7 +578,7 @@ Specifies IP address, port and secret of authentication RADIUS server. (obsolete
+ .BI "acct-server=" x.x.x.x:port,secret
+ Specifies IP address, port and secret of accounting RADIUS server. (obsolete)
+ .TP
+-.BI "server=" address,secret[,auth-port=1812][,acct-port=1813][,req-limit=0][,fail-time=0]
++.BI "server=" address,secret[,auth-port=1812][,acct-port=1813][,req-limit=0][,fail-time=0][,weight=1][,backup]
+ Specifies IP address, secret, ports of RADIUS server.
+ .br
+ .B req-limit
+@@ -578,6 +587,12 @@ Specifies IP address, secret, ports of RADIUS server.
+ .B fail-time
+ - if server doesn't responds mark it as unavailable for this time (sec).
+ .br
++.B weight
++- specifies weight of server for multi-server configuration.
++.br
++.B backup
++- mark server as backup server f.e. use this server only when all other servers are failed.
++.br
+ If you want to specify only authentication or accounting server then set auth-port/acct-port to zero.
+ You may specify multiple radius servers.
+ .TP
+@@ -617,6 +632,9 @@ Append specified realm to username.
+ .TP
+ .BI "acct-on=" 0|1
+ Specifies whether radius client should send Account-Request with Acct-Status-Type=Accounting-On on startup and Acct-Status-Type=Accounting-Off on shutdown.
++.TP
++.BI "attr-tunnel-type=" name
++Specifies custom attribute name to be used to send tunnel type (as string).
+ .SH [log]
+ .br
+ Configuration of log and log_file modules.
+@@ -738,6 +756,9 @@ Configuration of ippool module.
+ .BI "gw-ip-address=" x.x.x.x
+ Specifies single IP address to be used as local address of ppp interfaces.
+ .TP
++.BI "shuffle=" 1|0
++Specifies whether to shuffle initial address list.
++.TP
+ .BI "gw=" range
+ Specifies range of local address of ppp interfaces if form:
+ .br
+diff --git a/accel-pppd/auth/auth_chap_md5.c b/accel-pppd/auth/auth_chap_md5.c
+index 8aa3018..9a52581 100644
+--- a/accel-pppd/auth/auth_chap_md5.c
++++ b/accel-pppd/auth/auth_chap_md5.c
+@@ -37,41 +37,36 @@ static int conf_interval = 0;
+ static int conf_max_failure = 3;
+ static int conf_any_login = 0;
+ 
+-struct chap_hdr_t
+-{
++struct chap_hdr_t {
+ 	uint16_t proto;
+ 	uint8_t code;
+ 	uint8_t id;
+ 	uint16_t len;
+ } __attribute__((packed));
+ 
+-struct chap_challenge_t
+-{
++struct chap_challenge_t {
+ 	struct chap_hdr_t hdr;
+ 	uint8_t val_size;
+ 	uint8_t val[VALUE_SIZE];
+ 	char name[0];
+ } __attribute__((packed));
+ 
+-struct chap_failure_t
+-{
++struct chap_failure_t {
+ 	struct chap_hdr_t hdr;
+ 	char message[sizeof(MSG_FAILURE)];
+ } __attribute__((packed));
+ 
+-struct chap_success_t
+-{
++struct chap_success_t {
+ 	struct chap_hdr_t hdr;
+ 	char message[sizeof(MSG_SUCCESS)];
+ } __attribute__((packed));
+ 
+ 
+-struct chap_auth_data_t
+-{
++struct chap_auth_data_t {
+ 	struct auth_data_t auth;
+ 	struct ppp_handler_t h;
+ 	struct ppp_t *ppp;
+-	int id;
++	uint8_t id;
+ 	uint8_t val[VALUE_SIZE];
+ 	struct triton_timer_t timeout;
+ 	struct triton_timer_t interval;
+@@ -131,6 +126,7 @@ static int chap_start(struct ppp_t *ppp, struct auth_data_t *auth)
+ 	d->timeout.period = conf_timeout * 1000;
+ 	d->interval.expire = chap_restart_timer;
+ 	d->interval.period = conf_interval * 1000;
++	d->id = 1;
+ 
+ 	ppp_register_chan_handler(ppp, &d->h);
+ 
+@@ -166,10 +162,8 @@ static void chap_timeout_timer(struct triton_timer_t *t)
+ 			ap_session_terminate(&d->ppp->ses, TERM_USER_ERROR, 0);
+ 		else
+ 			ppp_auth_failed(d->ppp, NULL);
+-	} else {
+-		--d->id;
++	} else
+ 		chap_send_challenge(d, 0);
+-	}
+ }
+ 
+ static void chap_restart_timer(struct triton_timer_t *t)
+@@ -208,12 +202,12 @@ static void chap_send_failure(struct chap_auth_data_t *ad)
+ 	ppp_chan_send(ad->ppp, &msg, ntohs(msg.hdr.len) + 2);
+ }
+ 
+-static void chap_send_success(struct chap_auth_data_t *ad)
++static void chap_send_success(struct chap_auth_data_t *ad, int id)
+ {
+ 	struct chap_success_t msg =	{
+ 		.hdr.proto = htons(PPP_CHAP),
+ 		.hdr.code = CHAP_SUCCESS,
+-		.hdr.id = ad->id,
++		.hdr.id = id,
+ 		.hdr.len = htons(sizeof(msg)-1-2),
+ 		.message = MSG_SUCCESS,
+ 	};
+@@ -229,7 +223,7 @@ static void chap_send_challenge(struct chap_auth_data_t *ad, int new)
+ 	struct chap_challenge_t msg =	{
+ 		.hdr.proto = htons(PPP_CHAP),
+ 		.hdr.code = CHAP_CHALLENGE,
+-		.hdr.id = ++ad->id,
++		.hdr.id = ad->id,
+ 		.hdr.len = htons(sizeof(msg) - 2),
+ 		.val_size = VALUE_SIZE,
+ 	};
+@@ -270,6 +264,11 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
+ 		print_str(msg->name, ntohs(msg->hdr.len) - sizeof(*msg) + 2);
+ 		log_ppp_info2("\"]\n");
+ 	}
++	
++	if (ad->started && msg->hdr.id == ad->id - 1) {
++		chap_send_success(ad, msg->hdr.id);
++		return;
++	}
+ 
+ 	if (msg->hdr.id != ad->id) {
+ 		if (conf_ppp_verbose)
+@@ -296,8 +295,9 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
+ 			_free(name);
+ 			return;
+ 		}
+-		chap_send_success(ad);
++		chap_send_success(ad, ad->id);
+ 		ad->started = 1;
++		ad->id++;
+ 		return;
+ 	}
+ 
+@@ -337,13 +337,15 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
+ 					ap_session_terminate(&ad->ppp->ses, TERM_AUTH_ERROR, 0);
+ 					_free(name);
+ 				} else {
+-					chap_send_success(ad);
++					chap_send_success(ad, ad->id);
+ 					ad->started = 1;
+ 					if (conf_interval)
+ 						triton_timer_add(ad->ppp->ses.ctrl->ctx, &ad->interval, 0);
+ 				}
+ 			} else
+ 				_free(name);
++			
++			ad->id++;
+ 		}
+ 		_free(passwd);
+ 	} else if (r == PWDB_DENIED) {
+@@ -360,15 +362,17 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
+ 				ap_session_terminate(&ad->ppp->ses, TERM_AUTH_ERROR, 0);
+ 				_free(name);
+ 			} else {
+-				chap_send_success(ad);
++				chap_send_success(ad, ad->id);
+ 				ad->started = 1;
+ 				if (conf_interval)
+ 					triton_timer_add(ad->ppp->ses.ctrl->ctx, &ad->interval, 0);
+ 			}
+ 		} else {
+-			chap_send_success(ad);
++			chap_send_success(ad, ad->id);
+ 			_free(name);
+ 		}
++
++		ad->id++;
+ 	}
+ }
+ 
+diff --git a/accel-pppd/auth/auth_mschap_v1.c b/accel-pppd/auth/auth_mschap_v1.c
+index 0dcaffd..1576c83 100644
+--- a/accel-pppd/auth/auth_mschap_v1.c
++++ b/accel-pppd/auth/auth_mschap_v1.c
+@@ -37,26 +37,22 @@ static int conf_max_failure = 3;
+ static int conf_any_login = 0;
+ static char *conf_msg_failure = "E=691 R=0";
+ static char *conf_msg_success = "Authentication succeeded";
+-;
+ 
+-struct chap_hdr_t
+-{
++struct chap_hdr_t {
+ 	uint16_t proto;
+ 	uint8_t code;
+ 	uint8_t id;
+ 	uint16_t len;
+ } __attribute__((packed));
+ 
+-struct chap_challenge_t
+-{
++struct chap_challenge_t {
+ 	struct chap_hdr_t hdr;
+ 	uint8_t val_size;
+ 	uint8_t val[VALUE_SIZE];
+ 	char name[0];
+ } __attribute__((packed));
+ 
+-struct chap_response_t
+-{
++struct chap_response_t {
+ 	struct chap_hdr_t hdr;
+ 	uint8_t val_size;
+ 	uint8_t lm_hash[24];
+@@ -65,12 +61,11 @@ struct chap_response_t
+ 	char name[0];
+ } __attribute__((packed));
+ 
+-struct chap_auth_data_t
+-{
++struct chap_auth_data_t {
+ 	struct auth_data_t auth;
+ 	struct ppp_handler_t h;
+ 	struct ppp_t *ppp;
+-	int id;
++	uint8_t id;
+ 	uint8_t val[VALUE_SIZE];
+ 	struct triton_timer_t timeout;
+ 	struct triton_timer_t interval;
+@@ -132,6 +127,7 @@ static int chap_start(struct ppp_t *ppp, struct auth_data_t *auth)
+ 	d->timeout.period = conf_timeout * 1000;
+ 	d->interval.expire = chap_restart_timer;
+ 	d->interval.period = conf_interval * 1000;
++	d->id = 1;
+ 
+ 	ppp_register_chan_handler(ppp, &d->h);
+ 
+@@ -167,10 +163,8 @@ static void chap_timeout_timer(struct triton_timer_t *t)
+ 			ap_session_terminate(&d->ppp->ses, TERM_USER_ERROR, 0);
+ 		else
+ 			ppp_auth_failed(d->ppp, NULL);
+-	} else {
+-		--d->id;
++	} else
+ 		chap_send_challenge(d, 0);
+-	}
+ }
+ 
+ static void chap_restart_timer(struct triton_timer_t *t)
+@@ -210,12 +204,12 @@ static void chap_send_failure(struct chap_auth_data_t *ad, char *mschap_error)
+ 	_free(hdr);
+ }
+ 
+-static void chap_send_success(struct chap_auth_data_t *ad)
++static void chap_send_success(struct chap_auth_data_t *ad, int id)
+ {
+ 	struct chap_hdr_t *hdr = _malloc(sizeof(*hdr) + strlen(conf_msg_success) + 1);
+ 	hdr->proto = htons(PPP_CHAP);
+ 	hdr->code = CHAP_SUCCESS;
+-	hdr->id = ad->id;
++	hdr->id = id;
+ 	hdr->len = htons(HDR_LEN + strlen(conf_msg_success));
+ 	strcpy((char *)(hdr + 1), conf_msg_success);
+ 	
+@@ -232,7 +226,7 @@ static void chap_send_challenge(struct chap_auth_data_t *ad, int new)
+ 	struct chap_challenge_t msg = {
+ 		.hdr.proto = htons(PPP_CHAP),
+ 		.hdr.code = CHAP_CHALLENGE,
+-		.hdr.id = ++ad->id,
++		.hdr.id = ad->id,
+ 		.hdr.len = htons(sizeof(msg) - 2),
+ 		.val_size = VALUE_SIZE,
+ 	};
+@@ -274,6 +268,11 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
+ 		log_ppp_info2("\"]\n");
+ 	}
+ 
++	if (ad->started && msg->hdr.id == ad->id - 1) {
++		chap_send_success(ad, msg->hdr.id);
++		return;
++	}
++
+ 	if (msg->hdr.id != ad->id) {
+ 		if (conf_ppp_verbose)
+ 			log_ppp_warn("mschap-v1: id mismatch\n");
+@@ -306,8 +305,9 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
+ 			_free(name);
+ 			return;
+ 		}
+-		chap_send_success(ad);
++		chap_send_success(ad, ad->id);
+ 		ad->started = 1;
++		ad->id++;
+ 		return;
+ 	}
+ 
+@@ -323,6 +323,8 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
+ 		else
+ 			ppp_auth_failed(ad->ppp, name);
+ 		_free(name);
++		if (mschap_error != conf_msg_failure)
++			_free(mschap_error);
+ 	} else {
+ 		if (!ad->started) {
+ 			if (ppp_auth_succeeded(ad->ppp, name)) {
+@@ -330,15 +332,17 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
+ 				ap_session_terminate(&ad->ppp->ses, TERM_AUTH_ERROR, 0);
+ 				_free(name);
+ 			} else {
+-				chap_send_success(ad);
++				chap_send_success(ad, ad->id);
+ 				ad->started = 1;
+ 				if (conf_interval)
+ 					triton_timer_add(ad->ppp->ses.ctrl->ctx, &ad->interval, 0);
+ 			}
+ 		} else {
+-			chap_send_success(ad);
++			chap_send_success(ad, ad->id);
+ 			_free(name);
+ 		}
++
++		ad->id++;
+ 	}
+ }
+ 
+diff --git a/accel-pppd/auth/auth_mschap_v2.c b/accel-pppd/auth/auth_mschap_v2.c
+index 3ee2adc..29f3749 100644
+--- a/accel-pppd/auth/auth_mschap_v2.c
++++ b/accel-pppd/auth/auth_mschap_v2.c
+@@ -38,24 +38,21 @@ static char *conf_msg_failure = "E=691 R=0 V=3";
+ static char *conf_msg_failure2 = "Authentication failure";
+ static char *conf_msg_success = "Authentication succeeded";
+ 
+-struct chap_hdr_t
+-{
++struct chap_hdr_t {
+ 	uint16_t proto;
+ 	uint8_t code;
+ 	uint8_t id;
+ 	uint16_t len;
+ } __attribute__((packed));
+ 
+-struct chap_challenge_t
+-{
++struct chap_challenge_t {
+ 	struct chap_hdr_t hdr;
+ 	uint8_t val_size;
+ 	uint8_t val[VALUE_SIZE];
+ 	char name[0];
+ } __attribute__((packed));
+ 
+-struct chap_response_t
+-{
++struct chap_response_t {
+ 	struct chap_hdr_t hdr;
+ 	uint8_t val_size;
+ 	uint8_t peer_challenge[16];
+@@ -65,15 +62,15 @@ struct chap_response_t
+ 	char name[0];
+ } __attribute__((packed));
+ 
+-struct chap_auth_data_t
+-{
++struct chap_auth_data_t {
+ 	struct auth_data_t auth;
+ 	struct ppp_handler_t h;
+ 	struct ppp_t *ppp;
+-	int id;
++	uint8_t id;
+ 	uint8_t val[VALUE_SIZE];
+ 	struct triton_timer_t timeout;
+ 	struct triton_timer_t interval;
++	char authenticator[41];
+ 	int failure;
+ 	int started:1;
+ };
+@@ -119,7 +116,7 @@ static void auth_data_free(struct ppp_t *ppp, struct auth_data_t *auth)
+ 
+ 	if (d->interval.tpd)
+ 		triton_timer_del(&d->interval);
+-
++	
+ 	_free(d);
+ }
+ 
+@@ -133,6 +130,7 @@ static int chap_start(struct ppp_t *ppp, struct auth_data_t *auth)
+ 	d->timeout.period = conf_timeout * 1000;
+ 	d->interval.expire = chap_restart_timer;
+ 	d->interval.period = conf_interval * 1000;
++	d->id = 1;
+ 
+ 	ppp_register_chan_handler(ppp, &d->h);
+ 
+@@ -168,10 +166,8 @@ static void chap_timeout_timer(struct triton_timer_t *t)
+ 			ap_session_terminate(&d->ppp->ses, TERM_USER_ERROR, 0);
+ 		else
+ 			ppp_auth_failed(d->ppp, NULL);
+-	} else {
+-		--d->id;
++	} else
+ 		chap_send_challenge(d, 0);
+-	}
+ }
+ 
+ static void chap_restart_timer(struct triton_timer_t *t)
+@@ -212,12 +208,12 @@ static void chap_send_failure(struct chap_auth_data_t *ad, char *mschap_error, c
+ 	_free(hdr);
+ }
+ 
+-static void chap_send_success(struct chap_auth_data_t *ad, struct chap_response_t *res_msg, const char *authenticator)
++static void chap_send_success(struct chap_auth_data_t *ad, int id, const char *authenticator)
+ {
+ 	struct chap_hdr_t *hdr = _malloc(sizeof(*hdr) + strlen(conf_msg_success) + 1 +	45);
+ 	hdr->proto = htons(PPP_CHAP),
+ 	hdr->code = CHAP_SUCCESS,
+-	hdr->id = ad->id,
++	hdr->id = id,
+ 	hdr->len = htons(HDR_LEN + strlen(conf_msg_success) + 45),
+ 
+ 	sprintf((char *)(hdr + 1), "S=%s M=%s", authenticator, conf_msg_success);
+@@ -305,7 +301,7 @@ static void chap_send_challenge(struct chap_auth_data_t *ad, int new)
+ 	struct chap_challenge_t msg =	{
+ 		.hdr.proto = htons(PPP_CHAP),
+ 		.hdr.code = CHAP_CHALLENGE,
+-		.hdr.id = ++ad->id,
++		.hdr.id = ad->id,
+ 		.hdr.len = htons(sizeof(msg) - 2),
+ 		.val_size = VALUE_SIZE,
+ 	};
+@@ -351,6 +347,11 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
+ 		log_ppp_info2("\"]\n");
+ 	}
+ 
++	if (ad->started && msg->hdr.id == ad->id - 1) {
++		chap_send_success(ad, msg->hdr.id, ad->authenticator);
++		return;
++	}
++
+ 	if (msg->hdr.id != ad->id) {
+ 		if (conf_ppp_verbose)
+ 			log_ppp_warn("mschap-v2: id mismatch\n");
+@@ -394,6 +395,10 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
+ 		else
+ 			ppp_auth_failed(ad->ppp, name);
+ 		_free(name);
++		if (mschap_error != conf_msg_failure)
++			_free(mschap_error);
++		if (reply_msg != conf_msg_failure2)
++			_free(reply_msg);
+ 	} else {
+ 		if (!ad->started) {
+ 			if (ppp_auth_succeeded(ad->ppp, name)) {
+@@ -401,15 +406,19 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
+ 				ap_session_terminate(&ad->ppp->ses, TERM_AUTH_ERROR, 0);
+ 				_free(name);
+ 			} else {
+-				chap_send_success(ad, msg, authenticator);
++				chap_send_success(ad, ad->id, authenticator);
+ 				ad->started = 1;
+ 				if (conf_interval)
+ 					triton_timer_add(ad->ppp->ses.ctrl->ctx, &ad->interval, 0);
+ 			}
+ 		} else {
+-			chap_send_success(ad, msg, authenticator);
++			chap_send_success(ad, ad->id, authenticator);
+ 			_free(name);
+ 		}
++
++		memcpy(ad->authenticator, authenticator, 41);
++
++		ad->id++;
+ 	}
+ }
+ 
+diff --git a/accel-pppd/auth/auth_pap.c b/accel-pppd/auth/auth_pap.c
+index c0faad9..5f07337 100644
+--- a/accel-pppd/auth/auth_pap.c
++++ b/accel-pppd/auth/auth_pap.c
+@@ -182,6 +182,11 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
+ 
+ 	if (conf_ppp_verbose)
+ 		log_ppp_info2("recv [PAP AuthReq id=%x]\n", hdr->id);
++	
++	if (p->started) {
++		pap_send_ack(p, hdr->id);
++		return 0;
++	}
+ 
+ 	peer_id_len = *(uint8_t*)ptr; ptr++;
+ 	if (peer_id_len > ntohs(hdr->len) - sizeof(*hdr) + 2 - 1) {
+diff --git a/accel-pppd/cli/cli.h b/accel-pppd/cli/cli.h
+index b02b2bb..89c7432 100644
+--- a/accel-pppd/cli/cli.h
++++ b/accel-pppd/cli/cli.h
+@@ -1,7 +1,7 @@
+ #ifndef __CLI_H
+ #define __CLI_H
+ 
+-#include <pcre.h>
++#include <pcre/pcre.h>
+ #include <list.h>
+ 
+ #define CLI_CMD_OK 0
+diff --git a/accel-pppd/cli/tcp.c b/accel-pppd/cli/tcp.c
+index 48fa01a..4ec4950 100644
+--- a/accel-pppd/cli/tcp.c
++++ b/accel-pppd/cli/tcp.c
+@@ -54,8 +54,7 @@ static void disconnect(struct tcp_client_t *cln)
+ 
+ 	list_del(&cln->entry);
+ 
+-	triton_md_unregister_handler(&cln->hnd);
+-	close(cln->hnd.fd);
++	triton_md_unregister_handler(&cln->hnd, 1);
+ 
+ 	if (cln->xmit_buf)
+ 		_free(cln->xmit_buf);
+@@ -283,8 +282,7 @@ static void serv_close(struct triton_context_t *ctx)
+ 		disconnect(cln);
+ 	}
+ 
+-	triton_md_unregister_handler(&serv_hnd);
+-	close(serv_hnd.fd);
++	triton_md_unregister_handler(&serv_hnd, 1);
+ 	triton_context_unregister(ctx);
+ }
+ 
+diff --git a/accel-pppd/cli/telnet.c b/accel-pppd/cli/telnet.c
+index 58d0310..fb211ea 100644
+--- a/accel-pppd/cli/telnet.c
++++ b/accel-pppd/cli/telnet.c
+@@ -85,8 +85,7 @@ static void disconnect(struct telnet_client_t *cln)
+ 
+ 	list_del(&cln->entry);
+ 
+-	triton_md_unregister_handler(&cln->hnd);
+-	close(cln->hnd.fd);
++	triton_md_unregister_handler(&cln->hnd, 1);
+ 
+ 	if (cln->xmit_buf)
+ 		_free(cln->xmit_buf);
+@@ -626,8 +625,7 @@ static void serv_close(struct triton_context_t *ctx)
+ 		disconnect(cln);
+ 	}
+ 
+-	triton_md_unregister_handler(&serv_hnd);
+-	close(serv_hnd.fd);
++	triton_md_unregister_handler(&serv_hnd, 1);
+ 	triton_context_unregister(ctx);
+ }
+ 
+diff --git a/accel-pppd/ctrl/ipoe/CMakeLists.txt b/accel-pppd/ctrl/ipoe/CMakeLists.txt
+index 16a6054..a91739d 100644
+--- a/accel-pppd/ctrl/ipoe/CMakeLists.txt
++++ b/accel-pppd/ctrl/ipoe/CMakeLists.txt
+@@ -21,7 +21,7 @@ ENDIF (LUA)
+ 
+ ADD_LIBRARY(ipoe SHARED ${sources})
+ IF (LUA)
+-	TARGET_LINK_LIBRARIES(ipoe ${LUA_LIBRARIES})
++	TARGET_LINK_LIBRARIES(ipoe ${LUA_LIBRARIES} rt)
+ ENDIF(LUA)
+ 
+ INSTALL(TARGETS ipoe LIBRARY DESTINATION lib${LIB_SUFFIX}/accel-ppp)
+diff --git a/accel-pppd/ctrl/ipoe/arp.c b/accel-pppd/ctrl/ipoe/arp.c
+index ee4ccde..10ea138 100644
+--- a/accel-pppd/ctrl/ipoe/arp.c
++++ b/accel-pppd/ctrl/ipoe/arp.c
+@@ -111,7 +111,10 @@ static int arp_read(struct triton_md_handler_t *h)
+ 				pthread_mutex_unlock(&s->ipoe->lock);
+ 				continue;
+ 			}
+-			memcpy(ah2.ar_sha, ses2->hwaddr, ETH_ALEN);
++			if (s->ipoe->opt_arp == 2)
++				memcpy(ah2.ar_sha, ses2->hwaddr, ETH_ALEN);
++			else
++				memcpy(ah2.ar_sha, s->ipoe->hwaddr, ETH_ALEN);
+ 		} else
+ 			memcpy(ah2.ar_sha, s->ipoe->hwaddr, ETH_ALEN);
+ 
+@@ -183,8 +186,7 @@ struct arp_serv *arpd_start(struct ipoe_serv *ipoe)
+ 
+ void arpd_stop(struct arp_serv *arp)
+ {
+-	triton_md_unregister_handler(&arp->h);
+-	close(arp->h.fd);
++	triton_md_unregister_handler(&arp->h, 1);
+ 	_free(arp);
+ }
+ 
+diff --git a/accel-pppd/ctrl/ipoe/dhcpv4.c b/accel-pppd/ctrl/ipoe/dhcpv4.c
+index c603c5f..21042b7 100644
+--- a/accel-pppd/ctrl/ipoe/dhcpv4.c
++++ b/accel-pppd/ctrl/ipoe/dhcpv4.c
+@@ -183,7 +183,7 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
+ 	serv->hnd.read = dhcpv4_read;
+ 	serv->ifindex = ifindex;
+ 
+-	if (opt) {
++	if (opt && *opt) {
+ 		str0 = _strdup(opt);
+ 		str = str0;
+ 	
+@@ -229,8 +229,7 @@ out_err:
+ 
+ void dhcpv4_free(struct dhcpv4_serv *serv)
+ {
+-	triton_md_unregister_handler(&serv->hnd);
+-	close(serv->hnd.fd);
++	triton_md_unregister_handler(&serv->hnd, 1);
+ 	if (serv->range)
+ 		_free(serv->range);
+ 	_free(serv);
+@@ -242,34 +241,42 @@ void dhcpv4_print_packet(struct dhcpv4_packet *pack, int relay, void (*print)(co
+ 
+ 	print("[DHCPv4 %s%s xid=%x ", relay ? "relay " : "", msg_name[pack->msg_type - 1], pack->hdr->xid);
+ 
+-	if (pack->hdr->ciaddr)
++	if (pack->hdr->ciaddr) {
++		in_addr_t addr = ntohl(pack->hdr->ciaddr);
+ 		print("ciaddr=%i.%i.%i.%i ",
+-			pack->hdr->ciaddr & 0xff,
+-			(pack->hdr->ciaddr >> 8) & 0xff,
+-			(pack->hdr->ciaddr >> 16) & 0xff,
+-			(pack->hdr->ciaddr >> 24) & 0xff);
+-	
+-	if (pack->hdr->yiaddr)
++			(addr >> 24) & 0xff,
++			(addr >> 16) & 0xff,
++			(addr >> 8) & 0xff,
++			addr & 0xff);
++	}
++
++	if (pack->hdr->yiaddr) {
++		in_addr_t addr = ntohl(pack->hdr->yiaddr);
+ 		print("yiaddr=%i.%i.%i.%i ",
+-			pack->hdr->yiaddr & 0xff,
+-			(pack->hdr->yiaddr >> 8) & 0xff,
+-			(pack->hdr->yiaddr >> 16) & 0xff,
+-			(pack->hdr->yiaddr >> 24) & 0xff);
+-	
+-	if (pack->hdr->siaddr)
++			(addr >> 24) & 0xff,
++			(addr >> 16) & 0xff,
++			(addr >> 8) & 0xff,
++			addr & 0xff);
++	}
++
++	if (pack->hdr->siaddr) {
++		in_addr_t addr = ntohl(pack->hdr->siaddr);
+ 		print("siaddr=%i.%i.%i.%i ",
+-			pack->hdr->siaddr & 0xff,
+-			(pack->hdr->siaddr >> 8) & 0xff,
+-			(pack->hdr->siaddr >> 16) & 0xff,
+-			(pack->hdr->siaddr >> 24) & 0xff);
+-	
+-	if (pack->hdr->giaddr)
++			(addr >> 24) & 0xff,
++			(addr >> 16) & 0xff,
++			(addr >> 8) & 0xff,
++			addr & 0xff);
++	}
++
++	if (pack->hdr->giaddr) {
++		in_addr_t addr = ntohl(pack->hdr->giaddr);
+ 		print("giaddr=%i.%i.%i.%i ",
+-			pack->hdr->giaddr & 0xff,
+-			(pack->hdr->giaddr >> 8) & 0xff,
+-			(pack->hdr->giaddr >> 16) & 0xff,
+-			(pack->hdr->giaddr >> 24) & 0xff);
+-	
++			(addr >> 24) & 0xff,
++			(addr >> 16) & 0xff,
++			(addr >> 8) & 0xff,
++			addr & 0xff);
++	}
++
+ 	print("chaddr=%02x:%02x:%02x:%02x:%02x:%02x ",
+ 		pack->hdr->chaddr[0],
+ 		pack->hdr->chaddr[1],
+@@ -911,8 +918,7 @@ out_err_unlock:
+ 
+ static void __dhcpv4_relay_free(struct dhcpv4_relay *r)
+ {
+-	triton_md_unregister_handler(&r->hnd);
+-	close(r->hnd.fd);
++	triton_md_unregister_handler(&r->hnd, 1);
+ 	triton_context_unregister(&r->ctx);
+ 	_free(r);
+ }
+diff --git a/accel-pppd/ctrl/ipoe/ipoe.c b/accel-pppd/ctrl/ipoe/ipoe.c
+index 375e6c5..55d2b21 100644
+--- a/accel-pppd/ctrl/ipoe/ipoe.c
++++ b/accel-pppd/ctrl/ipoe/ipoe.c
+@@ -5,6 +5,7 @@
+ #include <errno.h>
+ #include <string.h>
+ #include <fcntl.h>
++#include <assert.h>
+ #include <time.h>
+ #include <arpa/inet.h>
+ #include <netinet/in.h>
+@@ -15,7 +16,7 @@
+ #include <linux/if.h>
+ #include <linux/route.h>
+ 
+-#include <pcre.h>
++#include <pcre/pcre.h>
+ 
+ #include "events.h"
+ #include "list.h"
+@@ -50,6 +51,7 @@
+ struct ifaddr {
+ 	struct list_head entry;
+ 	in_addr_t addr;
++	int mask;
+ 	int refs;
+ };
+ 
+@@ -66,7 +68,6 @@ struct unit_cache {
+ 
+ struct l4_redirect {
+ 	struct list_head entry;
+-	int ifindex;
+ 	in_addr_t addr;
+ 	time_t timeout;
+ };
+@@ -90,13 +91,21 @@ struct delay {
+ 	int delay;
+ };
+ 
++struct request_item {
++	struct list_head entry;
++	uint32_t xid;
++	time_t expire;
++	int cnt;
++};
++
+ static int conf_dhcpv4 = 1;
+-static int conf_up = 0;
+-static int conf_mode = 0;
++static int conf_up;
++static int conf_mode;
+ static int conf_shared = 1;
+ static int conf_ifcfg = 1;
+-static int conf_nat = 0;
+-static int conf_arp = 0;
++static int conf_nat;
++static int conf_arp;
++static int conf_ipv6;
+ static uint32_t conf_src;
+ static const char *conf_ip_pool;
+ //static int conf_dhcpv6;
+@@ -108,12 +117,14 @@ static int conf_noauth;
+ static int conf_attr_dhcp_client_ip;
+ static int conf_attr_dhcp_router_ip;
+ static int conf_attr_dhcp_mask;
++static int conf_attr_dhcp_lease_time;
+ static int conf_attr_l4_redirect;
+ #endif
+ static int conf_l4_redirect_table;
+ static int conf_l4_redirect_on_reject;
+ static const char *conf_l4_redirect_ipset;
+ static int conf_vlan_timeout = 30;
++static int conf_max_request = 3;
+ 
+ static const char *conf_relay;
+ 
+@@ -133,6 +144,7 @@ static const char *conf_agent_remote_id;
+ static int conf_proto;
+ static LIST_HEAD(conf_offer_delay);
+ static const char *conf_vlan_name;
++static int conf_ip_unnumbered;
+ 
+ static unsigned int stat_starting;
+ static unsigned int stat_active;
+@@ -140,6 +152,7 @@ static unsigned int stat_delayed_offer;
+ 
+ static mempool_t ses_pool;
+ static mempool_t disc_item_pool;
++static mempool_t req_item_pool;
+ 
+ static int connlimit_loaded;
+ 
+@@ -314,17 +327,20 @@ static void ipoe_relay_timeout(struct triton_timer_t *t)
+ }
+ 
+ 
+-static void ipoe_session_set_username(struct ipoe_session *ses)
++static char *ipoe_session_get_username(struct ipoe_session *ses)
+ {
+ #ifdef USE_LUA
+-	if (ses->serv->opt_username == USERNAME_LUA) {
+-		ipoe_lua_set_username(ses, ses->serv->opt_lua_username_func ? : conf_lua_username_func);
+-	} else
++	if (ses->serv->opt_username == USERNAME_LUA)
++		return ipoe_lua_get_username(ses, ses->serv->opt_lua_username_func ? : conf_lua_username_func);
++	else
+ #endif
+-	ses->ses.username = _strdup(ses->ses.ifname);
++	if (!ses->dhcpv4_request)
++		return _strdup(ses->ctrl.calling_station_id);
++
++	return _strdup(ses->ses.ifname);
+ }
+ 
+-static void l4_redirect_list_add(in_addr_t addr, int ifindex)
++static void l4_redirect_list_add(in_addr_t addr)
+ {
+ 	struct l4_redirect *n = _malloc(sizeof(*n));
+ 	struct timespec ts;
+@@ -336,10 +352,9 @@ static void l4_redirect_list_add(in_addr_t addr, int ifindex)
+ 
+ 	memset(n, 0, sizeof(*n));
+ 	n->addr = addr;
+-	n->ifindex = ifindex;
+ 	n->timeout = ts.tv_sec + conf_l4_redirect_on_reject;
+ 	
+-	ipoe_nl_modify(ifindex, addr, 1, NULL, NULL);
++	ipoe_nl_add_exclude(addr, 32);
+ 
+ 	if (conf_l4_redirect_table)
+ 		iprule_add(addr, conf_l4_redirect_table);
+@@ -376,7 +391,6 @@ static void l4_redirect_list_timer(struct triton_timer_t *t)
+ {
+ 	struct l4_redirect *n;
+ 	struct timespec ts;
+-	struct unit_cache *uc;
+ 
+ 	clock_gettime(CLOCK_MONOTONIC, &ts);
+ 
+@@ -392,16 +406,8 @@ static void l4_redirect_list_timer(struct triton_timer_t *t)
+ 			
+ 			if (conf_l4_redirect_ipset)
+ 				ipset_del(conf_l4_redirect_ipset, n->addr);
+-
+-			if (uc_size < conf_unit_cache && ipoe_nl_modify(n->ifindex, 0, 0, "", NULL)) {
+-				uc = mempool_alloc(uc_pool);
+-				uc->ifindex = n->ifindex;
+-				pthread_mutex_lock(&uc_lock);
+-				list_add_tail(&uc->entry, &uc_list);
+-				++uc_size;
+-				pthread_mutex_unlock(&uc_lock);
+-			} else
+-				ipoe_nl_delete(n->ifindex);
++	
++			ipoe_nl_del_exclude(n->addr);
+ 
+ 			_free(n);
+ 			pthread_rwlock_wrlock(&l4_list_lock);
+@@ -485,7 +491,9 @@ static int ipoe_create_interface(struct ipoe_session *ses)
+ 	strncpy(ses->ses.ifname, ifr.ifr_name, AP_IFNAME_LEN);
+ 	ses->ses.ifindex = ses->ifindex;
+ 	ses->ses.unit_idx = ses->ifindex;
+-	ses->ctrl.dont_ifcfg = 0;
++	ses->ctrl.dont_ifcfg = !conf_ip_unnumbered;
++
++	log_ppp_info2("create interface %s parent %s\n", ifr.ifr_name, ses->serv->ifname);
+ 
+ 	return 0;
+ }
+@@ -494,18 +502,19 @@ static void ipoe_session_start(struct ipoe_session *ses)
+ {
+ 	int r;
+ 	char *passwd;
++	char *username;
+ 
+ 	__sync_add_and_fetch(&stat_starting, 1);
+ 	
+-	if (!ses->ses.username) {
+-		strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
+-		
+-		ipoe_session_set_username(ses);
++	assert(!ses->ses.username);
+ 
+-		if (!ses->ses.username) {
+-			ipoe_session_finished(&ses->ses);
+-			return;
+-		}
++	strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
++	
++	username = ipoe_session_get_username(ses);
++
++	if (!username) {
++		ipoe_session_finished(&ses->ses);
++		return;
+ 	}
+ 
+ 	ses->ses.unit_idx = ses->serv->ifindex;
+@@ -519,7 +528,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
+ 		if (ses->serv->opt_shared && ipoe_create_interface(ses))
+ 			return;
+ 
+-		r = pwdb_check(&ses->ses, ses->ses.username, PPP_PAP, conf_password ? conf_password : ses->ses.username);
++		r = pwdb_check(&ses->ses, username, PPP_PAP, conf_password ? conf_password : username);
+ 		if (r == PWDB_NO_IMPL) {
+ 			passwd = pwdb_get_passwd(&ses->ses, ses->ses.username);
+ 			if (!passwd)
+@@ -531,17 +540,20 @@ static void ipoe_session_start(struct ipoe_session *ses)
+ 		}
+ 
+ 		if (r == PWDB_DENIED) {
++			pthread_rwlock_wrlock(&ses_lock);
++			ses->ses.username = username;
++			ses->ses.terminate_cause = TERM_AUTH_ERROR;
++			pthread_rwlock_unlock(&ses_lock);
+ 			if (conf_ppp_verbose)
+ 				log_ppp_warn("authentication failed\n");
+-			if (conf_l4_redirect_on_reject && !ses->dhcpv4_request && ses->ifindex != -1) {
+-				l4_redirect_list_add(ses->yiaddr, ses->ifindex);
+-				ses->ifindex = -1;
+-			}
++			if (conf_l4_redirect_on_reject && !ses->dhcpv4_request)
++				l4_redirect_list_add(ses->yiaddr);
+ 			ap_session_terminate(&ses->ses, TERM_AUTH_ERROR, 0);
+ 			return;
+ 		}
+ 	}
+ 
++	ap_session_set_username(&ses->ses, username);
+ 	log_ppp_info1("%s: authentication succeeded\n", ses->ses.username);
+ 	triton_event_fire(EV_SES_AUTHORIZED, &ses->ses);
+ 
+@@ -678,27 +690,30 @@ static void __ipoe_session_start(struct ipoe_session *ses)
+ 	}
+ }
+ 
+-static void ipoe_serv_add_addr(struct ipoe_serv *serv, in_addr_t addr)
++static void ipoe_serv_add_addr(struct ipoe_serv *serv, in_addr_t addr, int mask)
+ {
+ 	struct ifaddr *a;
+ 
+ 	pthread_mutex_lock(&serv->lock);
+ 	
+-	list_for_each_entry(a, &serv->addr_list, entry) {
+-		if (a->addr == addr) {
+-			a->refs++;
+-			pthread_mutex_unlock(&serv->lock);
++	if (serv->opt_shared) {
++		list_for_each_entry(a, &serv->addr_list, entry) {
++			if (a->addr == addr) {
++				a->refs++;
++				pthread_mutex_unlock(&serv->lock);
+ 
+-			return;
++				return;
++			}
+ 		}
+ 	}
+ 
+ 	a = _malloc(sizeof(*a));
+ 	a->addr = addr;
++	a->mask = mask;
+ 	a->refs = 1;
+ 	list_add_tail(&a->entry, &serv->addr_list);
+ 
+-	if (ipaddr_add(serv->ifindex, a->addr, 32))
++	if (ipaddr_add(serv->ifindex, a->addr, mask))
+ 		log_warn("ipoe: failed to add addess to interface '%s'\n", serv->ifname);
+ 
+ 	pthread_mutex_unlock(&serv->lock);
+@@ -713,7 +728,7 @@ static void ipoe_serv_del_addr(struct ipoe_serv *serv, in_addr_t addr)
+ 	list_for_each_entry(a, &serv->addr_list, entry) {
+ 		if (a->addr == addr) {
+ 			if (--a->refs == 0) {
+-				if (ipaddr_del(serv->ifindex, a->addr))
++				if (ipaddr_del(serv->ifindex, a->addr, a->mask))
+ 					log_warn("ipoe: failed to delete addess from interface '%s'\n", serv->ifname);
+ 				list_del(&a->entry);
+ 				_free(a);
+@@ -729,19 +744,13 @@ static void ipoe_ifcfg_add(struct ipoe_session *ses)
+ {
+ 	struct ipoe_serv *serv = ses->serv;
+ 
+-	if (ses->serv->opt_ifcfg) {
+-		if (ses->serv->opt_shared)
+-			ipoe_serv_add_addr(ses->serv, ses->siaddr);
+-		else {
+-			pthread_mutex_lock(&serv->lock);
+-			if (ipaddr_add(serv->ifindex, ses->siaddr, 32))
+-				log_ppp_warn("ipoe: failed to add addess to interface '%s'\n", serv->ifname);
+-			pthread_mutex_unlock(&serv->lock);
+-		}
++	if (ses->serv->opt_ifcfg)
++		ipoe_serv_add_addr(ses->serv, ses->siaddr, conf_ip_unnumbered ? 32 : ses->mask);
++	
++	if (conf_ip_unnumbered) {
+ 		if (iproute_add(serv->ifindex, ses->serv->opt_src ? ses->serv->opt_src : ses->router, ses->yiaddr, conf_proto))
+ 			log_ppp_warn("ipoe: failed to add route to interface '%s'\n", serv->ifname);
+-	} else if (iproute_add(serv->ifindex, ses->serv->opt_src ? ses->serv->opt_src : ses->router, ses->yiaddr, conf_proto))
+-		log_ppp_warn("ipoe: failed to add route to interface '%s'\n", serv->ifname);
++	}
+ 
+ 	ses->ifcfg = 1;
+ }
+@@ -750,23 +759,13 @@ static void ipoe_ifcfg_del(struct ipoe_session *ses, int lock)
+ {
+ 	struct ipoe_serv *serv = ses->serv;
+ 	
+-	if (iproute_del(serv->ifindex, ses->yiaddr, conf_proto))
+-		log_ppp_warn("ipoe: failed to delete route from interface '%s'\n", serv->ifname);
+-
+-	if (ses->serv->opt_ifcfg) {
+-		if (ses->serv->opt_shared) {
+-			ipoe_serv_del_addr(ses->serv, ses->siaddr);
+-		} else {
+-			if (lock)
+-				pthread_mutex_lock(&serv->lock);
+-			if (ipaddr_del(serv->ifindex, ses->siaddr)) {
+-				if (lock)
+-					log_ppp_warn("ipoe: failed to remove addess from interface '%s'\n", serv->ifname);
+-			}
+-			if (lock)
+-				pthread_mutex_unlock(&serv->lock);
+-		}
++	if (conf_ip_unnumbered) {
++		if (iproute_del(serv->ifindex, ses->yiaddr, conf_proto))
++			log_ppp_warn("ipoe: failed to delete route from interface '%s'\n", serv->ifname);
+ 	}
++
++	if (ses->serv->opt_ifcfg)
++		ipoe_serv_del_addr(ses->serv, ses->siaddr);
+ }
+ 
+ static void __ipoe_session_activate(struct ipoe_session *ses)
+@@ -785,6 +784,8 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
+ 			}
+ 		} else if (ses->ses.ipv4->peer_addr != ses->yiaddr)
+ 			addr = ses->ses.ipv4->peer_addr;
++		else if (!conf_ip_unnumbered)
++			ses->ctrl.dont_ifcfg = 1;
+ 		
+ 		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, addr, NULL, NULL)) {
+ 			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
+@@ -799,11 +800,28 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
+ 		ses->ipv4.addr = ses->siaddr;
+ 	}
+ 	
+-	if (ses->ifindex == -1 && (ses->serv->opt_ifcfg || (ses->serv->opt_mode == MODE_L2)))
+-		ipoe_ifcfg_add(ses);
++	if (ses->ifindex == -1) {
++		if (ses->serv->opt_ifcfg || (ses->serv->opt_mode == MODE_L2))
++			ipoe_ifcfg_add(ses);
++	
++		ipoe_nl_add_exclude(ses->yiaddr, 32);
++
++		iproute_add(ses->serv->ifindex, ses->siaddr, ses->yiaddr, conf_proto);
++		
++		ses->ctrl.dont_ifcfg = 1;
++	} else if (ses->ctrl.dont_ifcfg)
++		ipaddr_add(ses->ifindex, ses->siaddr, ses->mask);
+ 	
+ 	if (ses->l4_redirect)
+ 		ipoe_change_l4_redirect(ses, 0);
++	
++	if (ses->serv->opt_mode == MODE_L2 && ses->serv->opt_ipv6 && sock6_fd != -1) {
++		ses->ses.ipv6 = ipdb_get_ipv6(&ses->ses);
++		if (!ses->ses.ipv6)
++			log_ppp_warn("ipoe: no free IPv6 address\n");
++		if (!ses->ses.ipv6->peer_intf_id)
++			ses->ses.ipv6->peer_intf_id = htobe64(1);
++	}
+ 
+ 	__sync_sub_and_fetch(&stat_starting, 1);
+ 	__sync_add_and_fetch(&stat_active, 1);
+@@ -965,7 +983,8 @@ static void ipoe_session_finished(struct ap_session *s)
+ 			pthread_mutex_unlock(&uc_lock);
+ 		} else
+ 			ipoe_nl_delete(ses->ifindex);
+-	}
++	} else
++		ipoe_nl_del_exclude(ses->yiaddr);
+ 
+ 	if (ses->dhcp_addr)
+ 		dhcpv4_put_ip(ses->serv->dhcpv4, ses->yiaddr);
+@@ -1022,6 +1041,7 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
+ 
+ 	ses->serv = serv;
+ 	ses->dhcpv4_request = pack;
++	strncpy(ses->ses.ifname, serv->ifname, AP_IFNAME_LEN);
+ 	
+ 	ses->xid = pack->hdr->xid;
+ 	memcpy(ses->hwaddr, pack->hdr->chaddr, 6);
+@@ -1110,7 +1130,7 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
+ 	
+ 	if (conf_verbose) {
+ 		log_ppp_info2("recv ");
+-		dhcpv4_print_packet(pack, 0, log_info2);
++		dhcpv4_print_packet(pack, 0, log_ppp_info2);
+ 	}
+ 
+ 	if (pack->relay_agent && dhcpv4_parse_opt82(pack->relay_agent, &agent_circuit_id, &agent_remote_id)) {
+@@ -1264,6 +1284,42 @@ static void ipoe_serv_check_disc(struct ipoe_serv *serv, struct dhcpv4_packet *p
+ 	}
+ }
+ 
++static int ipoe_serv_request_check(struct ipoe_serv *serv, uint32_t xid)
++{
++	struct request_item *r;
++	struct list_head *pos, *n;
++	struct timespec ts;
++
++	clock_gettime(CLOCK_MONOTONIC, &ts);
++
++	list_for_each_safe(pos, n, &serv->req_list) {
++		r = list_entry(pos, typeof(*r), entry);
++		if (r->xid == xid) {
++			if (++r->cnt == conf_max_request) {
++				list_del(&r->entry);
++				mempool_free(r);
++				return 1;
++			}
++
++			r->expire = ts.tv_sec + 30;
++			return 0;
++		}
++
++		if (ts.tv_sec > r->expire) {
++			list_del(&r->entry);
++			mempool_free(r);
++		}
++	}
++	
++	r = mempool_alloc(req_item_pool);
++	r->xid = xid;
++	r->expire = ts.tv_sec + 30;
++	r->cnt = 0;
++	list_add_tail(&r->entry, &serv->req_list);
++
++	return 0;
++}
++
+ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack, int force)
+ {
+ 	struct ipoe_serv *serv = container_of(dhcpv4->ctx, typeof(*serv), ctx);
+@@ -1277,7 +1333,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet
+ 	if (ap_shutdown)
+ 		return;
+ 	
+-	if (connlimit_loaded && pack->msg_type == DHCPDISCOVER && connlimit_check(cl_key_from_mac(pack->hdr->chaddr)))
++	if (connlimit_loaded && pack->msg_type == DHCPDISCOVER && connlimit_check(serv->opt_shared ? cl_key_from_mac(pack->hdr->chaddr) : serv->ifindex))
+ 		return;
+ 
+ 	pthread_mutex_lock(&serv->lock);
+@@ -1342,7 +1398,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet
+ 
+ 		if (!ses) {
+ 			if (conf_verbose) {
+-				log_debug("recv ");
++				log_debug("%s: recv ", serv->ifname);
+ 				dhcpv4_print_packet(pack, 0, log_debug);
+ 			}
+ 
+@@ -1358,7 +1414,8 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet
+ 				}
+ 				
+ 				triton_context_call(&opt82_ses->ctx, (triton_event_func)__ipoe_session_terminate, &opt82_ses->ses);
+-			}
++			} else if (list_empty(&conf_offer_delay) || ipoe_serv_request_check(serv, pack->hdr->xid))
++				dhcpv4_send_nak(dhcpv4, pack);
+ 		} else {
+ 			ses->xid = pack->hdr->xid;
+ 
+@@ -1369,7 +1426,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet
+ 				if (conf_verbose) {
+ 					log_switch(dhcpv4->ctx, &ses->ses);
+ 					log_ppp_info2("recv ");
+-					dhcpv4_print_packet(pack, 0, log_info2);
++					dhcpv4_print_packet(pack, 0, log_ppp_info2);
+ 					if ((opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent))
+ 						log_ppp_warn("port change detected\n");
+ 				}
+@@ -1545,9 +1602,6 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
+ 	u_inet_ntoa(iph->saddr, ses->ctrl.calling_station_id);
+ 	
+ 	ses->ses.chan_name = ses->ctrl.calling_station_id;
+-
+-	if (conf_username == USERNAME_UNSET)
+-		ses->ses.username = _strdup(ses->ctrl.calling_station_id);
+ 	
+ 	if (conf_ip_pool)
+ 		ses->ses.ipv4_pool_name = _strdup(conf_ip_pool);
+@@ -1656,7 +1710,8 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
+ 					ses->l4_redirect = 1;
+ 			} else if (attr->val.integer != 0)
+ 				ses->l4_redirect = 1;
+-		}
++		} else if (attr->attr->id == conf_attr_dhcp_lease_time)
++			ses->lease_time = attr->val.integer;
+ 	}
+ }
+ 
+@@ -1680,7 +1735,8 @@ static void ev_radius_coa(struct ev_radius_t *ev)
+ 		} else if (strcmp(attr->attr->name, "Framed-IP-Address") == 0) {
+ 			if (ses->ses.ipv4 && ses->ses.ipv4->peer_addr != attr->val.ipaddr)
+ 				ipoe_change_addr(ses, attr->val.ipaddr);
+-		}
++		} else if (attr->attr->id == conf_attr_dhcp_lease_time)
++			ses->lease_time = attr->val.integer;
+ 	}
+ 
+ 	//if (l4_redirect && !ses->l4_redirect) || (!l4_redirect && ses->l4_redirect))
+@@ -1731,6 +1787,12 @@ static void ipoe_serv_release(struct ipoe_serv *serv)
+ 		mempool_free(d);
+ 		__sync_sub_and_fetch(&stat_delayed_offer, 1);
+ 	}
++	
++	while (!list_empty(&serv->req_list)) {
++		struct request_item *r = list_first_entry(&serv->req_list, typeof(*r), entry);
++		list_del(&r->entry);
++		mempool_free(r);
++	}
+ 
+ 	if (serv->disc_timer.tpd)
+ 		triton_timer_del(&serv->disc_timer);
+@@ -1780,7 +1842,7 @@ static void l4_redirect_ctx_close(struct triton_context_t *ctx)
+ 		if (conf_l4_redirect_ipset)
+ 			ipset_del(conf_l4_redirect_ipset, n->addr);
+ 		
+-		ipoe_nl_delete(n->ifindex);
++		ipoe_nl_del_exclude(n->addr);
+ 		
+ 		_free(n);
+ 	}
+@@ -1917,17 +1979,21 @@ void ipoe_vlan_notify(int ifindex, int vid)
+ 		log_error("ipoe: vlan-mon: %s.%i: interface name is too long\n", ifr.ifr_name, vid);
+ 		return;
+ 	}
++	
++	log_info2("ipoe: create vlan %s parent %s\n", ifname, ifr.ifr_name);
+ 
+ 	strcpy(ifr.ifr_name, ifname);
+ 	len = strlen(ifr.ifr_name);
+ 
+-	log_info2("ipoe: create vlan %s\n", ifr.ifr_name);
+-
+ 	if (iplink_vlan_add(ifr.ifr_name, ifindex, vid)) {
+ 		log_warn("ipoe: vlan-mon: %s: failed to add vlan\n", ifr.ifr_name);
+ 		return;
+ 	}
+ 	
++	ioctl(sock_fd, SIOCGIFFLAGS, &ifr, sizeof(ifr));
++	ifr.ifr_flags |= IFF_UP;
++	ioctl(sock_fd, SIOCSIFFLAGS, &ifr, sizeof(ifr));
++	
+ 	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr, sizeof(ifr))) {
+ 		log_error("ipoe: vlan-mon: %s: failed to get interface index\n", ifr.ifr_name);
+ 		return;
+@@ -1988,6 +2054,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int
+ 	int opt_ifcfg = conf_ifcfg;
+ 	int opt_nat = conf_nat;
+ 	int opt_username = conf_username;
++	int opt_ipv6 = conf_ipv6;
+ #ifdef USE_LUA
+ 	char *opt_lua_username_func = NULL;
+ #endif
+@@ -2050,6 +2117,8 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int
+ 				opt_src = inet_addr(ptr1);
+ 			} else if (strcmp(str, "proxy-arp") == 0) {
+ 				opt_arp = atoi(ptr1);
++			} else if (strcmp(str, "ipv6") == 0) {
++				opt_ipv6 = atoi(ptr1);
+ 			} else if (strcmp(str, "username") == 0) {
+ 				if (strcmp(ptr1, "ifname") == 0)
+ 					opt_username = USERNAME_IFNAME;
+@@ -2133,7 +2202,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int
+ 
+ 		if (!serv->dhcpv4_relay && serv->opt_dhcpv4 && opt_relay) {
+ 			if (opt_ifcfg)
+-				ipoe_serv_add_addr(serv, opt_giaddr);
++				ipoe_serv_add_addr(serv, opt_giaddr, 32);
+ 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);
+ 		}
+ 
+@@ -2150,6 +2219,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int
+ 		serv->opt_src = opt_src;
+ 		serv->opt_arp = opt_arp;
+ 		serv->opt_username = opt_username;
++		serv->opt_ipv6 = opt_ipv6;
+ #ifdef USE_LUA
+ 		if (serv->opt_lua_username_func && (!opt_lua_username_func || strcmp(serv->opt_lua_username_func, opt_lua_username_func))) {
+ 			_free(serv->opt_lua_username_func);
+@@ -2207,6 +2277,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int
+ 	serv->opt_src = opt_src;
+ 	serv->opt_arp = opt_arp;
+ 	serv->opt_username = opt_username;
++	serv->opt_ipv6 = opt_ipv6;
+ #ifdef USE_LUA
+ 	serv->opt_lua_username_func = opt_lua_username_func;
+ #endif
+@@ -2216,6 +2287,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int
+ 	INIT_LIST_HEAD(&serv->sessions);
+ 	INIT_LIST_HEAD(&serv->addr_list);
+ 	INIT_LIST_HEAD(&serv->disc_list);
++	INIT_LIST_HEAD(&serv->req_list);
+ 	memcpy(serv->hwaddr, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+ 	serv->disc_timer.expire = ipoe_serv_disc_timer;
+ 	
+@@ -2228,7 +2300,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int
+ 	
+ 		if (opt_relay) {
+ 			if (opt_ifcfg)
+-				ipoe_serv_add_addr(serv, opt_giaddr);
++				ipoe_serv_add_addr(serv, opt_giaddr, 32);
+ 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);
+ 		}
+ 	}
+@@ -2376,17 +2448,7 @@ static void parse_local_net(const char *opt)
+ 		mask = 24;
+ 	}
+ 
+-	if (mask == 32)
+-		mask = 0xffffffff;
+-	else
+-		mask = (1 << (32-mask)) - 1;
+-
+-	addr = ntohl(addr);
+-	mask = ~mask;
+-
+-	//printf("%x/%x %x\n", htonl(addr), ~mask, htonl(addr)&(~mask));
+-
+-	ipoe_nl_add_net(addr & mask, mask);
++	ipoe_nl_add_net(addr, mask);
+ 
+ 	return;
+ 
+@@ -2477,6 +2539,7 @@ static void load_radius_attrs(void)
+ 	parse_conf_rad_attr("attr-dhcp-client-ip", &conf_attr_dhcp_client_ip);
+ 	parse_conf_rad_attr("attr-dhcp-router-ip", &conf_attr_dhcp_router_ip);
+ 	parse_conf_rad_attr("attr-dhcp-mask", &conf_attr_dhcp_mask);
++	parse_conf_rad_attr("attr-dhcp-lease-time", &conf_attr_dhcp_lease_time);
+ 	parse_conf_rad_attr("attr-l4-redirect", &conf_attr_l4_redirect);
+ }
+ #endif
+@@ -2893,6 +2956,12 @@ static void load_config(void)
+ 	else
+ 		conf_agent_remote_id = "accel-pppd";
+ 	
++	opt = conf_get_opt("ipoe", "ipv6");
++	if (opt)
++		conf_ipv6 = atoi(opt);
++	else
++		conf_ipv6 = 0;
++	
+ 	opt = conf_get_opt("ipoe", "noauth");
+ 	if (opt)
+ 		conf_noauth = atoi(opt);
+@@ -2938,6 +3007,12 @@ static void load_config(void)
+ 	if (!conf_vlan_name)
+ 		conf_vlan_name = "%I.%N";
+ 	
++	opt = conf_get_opt("ipoe", "ip-unnumbered");
++	if (opt)
++		conf_ip_unnumbered = atoi(opt);
++	else
++		conf_ip_unnumbered = 1;
++	
+ #ifdef RADIUS
+ 	if (triton_module_loaded("radius"))
+ 		load_radius_attrs();
+@@ -2963,6 +3038,7 @@ static void ipoe_init(void)
+ {
+ 	ses_pool = mempool_create(sizeof(struct ipoe_session));
+ 	disc_item_pool = mempool_create(sizeof(struct disc_item));
++	req_item_pool = mempool_create(sizeof(struct request_item));
+ 	uc_pool = mempool_create(sizeof(struct unit_cache));
+ 	
+ 	triton_context_register(&l4_redirect_ctx, NULL);
+diff --git a/accel-pppd/ctrl/ipoe/ipoe.h b/accel-pppd/ctrl/ipoe/ipoe.h
+index 5ef46b7..44c8b99 100644
+--- a/accel-pppd/ctrl/ipoe/ipoe.h
++++ b/accel-pppd/ctrl/ipoe/ipoe.h
+@@ -27,6 +27,7 @@ struct ipoe_serv {
+ 	struct dhcpv4_relay *dhcpv4_relay;
+ 	struct arp_serv *arp;
+ 	struct list_head disc_list;
++	struct list_head req_list;
+ 	struct triton_timer_t disc_timer;
+ 	struct triton_timer_t timer;
+ 	pthread_mutex_t lock;
+@@ -44,6 +45,7 @@ struct ipoe_serv {
+ 	int opt_up:1;
+ 	int opt_ifcfg:1;
+ 	int opt_nat:1;
++	int opt_ipv6:1;
+ 	int need_close:1;
+ 	int active:1;
+ };
+@@ -97,7 +99,7 @@ struct arp_serv {
+ };
+ 
+ #ifdef USE_LUA
+-int ipoe_lua_set_username(struct ipoe_session *, const char *func);
++char *ipoe_lua_get_username(struct ipoe_session *, const char *func);
+ #endif
+ 
+ struct iphdr;
+@@ -121,6 +123,8 @@ void ipoe_nl_get_sessions(struct list_head *list);
+ int ipoe_nl_add_vlan_mon(int ifindex, long *mask, int len);
+ int ipoe_nl_add_vlan_mon_vid(int ifindex, int vid);
+ int ipoe_nl_del_vlan_mon(int ifindex);
++int ipoe_nl_add_exclude(uint32_t addr, int mask);
++void ipoe_nl_del_exclude(uint32_t addr);
+ 
+ struct arp_serv *arpd_start(struct ipoe_serv *ipoe);
+ void arpd_stop(struct arp_serv *arp);
+diff --git a/accel-pppd/ctrl/ipoe/ipoe_netlink.c b/accel-pppd/ctrl/ipoe/ipoe_netlink.c
+index 68e533c..7643961 100644
+--- a/accel-pppd/ctrl/ipoe/ipoe_netlink.c
++++ b/accel-pppd/ctrl/ipoe/ipoe_netlink.c
+@@ -74,6 +74,8 @@ void ipoe_nl_add_net(uint32_t addr, int mask)
+ 
+ 	ghdr = NLMSG_DATA(&req.n);
+ 	ghdr->cmd = IPOE_CMD_ADD_NET;
++		
++	mask = ((1 << mask) - 1) << (32 - mask);
+ 
+ 	addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
+ 	addattr32(nlh, 1024, IPOE_ATTR_MASK, mask);
+@@ -82,6 +84,74 @@ void ipoe_nl_add_net(uint32_t addr, int mask)
+ 		log_error("ipoe: nl_add_net: error talking to kernel\n");
+ }
+ 
++int ipoe_nl_add_exclude(uint32_t addr, int mask)
++{
++	struct rtnl_handle rth;
++	struct nlmsghdr *nlh;
++	struct genlmsghdr *ghdr;
++	struct {
++		struct nlmsghdr n;
++		char buf[1024];
++	} req;
++	int ret = 0;
++	
++	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
++		log_ppp_error("ipoe: cannot open generic netlink socket\n");
++		return -1;
++	}
++	
++	nlh = &req.n;
++	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
++	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
++	nlh->nlmsg_type = ipoe_genl_id;
++
++	ghdr = NLMSG_DATA(&req.n);
++	ghdr->cmd = IPOE_CMD_ADD_EXCLUDE;
++
++
++	addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
++
++	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
++		log_ppp_error("ipoe: nl_add_net: error talking to kernel\n");
++		ret = -1;
++	}
++	
++	rtnl_close(&rth);
++	
++	return ret;
++}
++
++void ipoe_nl_del_exclude(uint32_t addr)
++{
++	struct rtnl_handle rth;
++	struct nlmsghdr *nlh;
++	struct genlmsghdr *ghdr;
++	struct {
++		struct nlmsghdr n;
++		char buf[1024];
++	} req;
++	
++	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
++		log_ppp_error("ipoe: cannot open generic netlink socket\n");
++		return;
++	}
++
++	nlh = &req.n;
++	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
++	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
++	nlh->nlmsg_type = ipoe_genl_id;
++
++	ghdr = NLMSG_DATA(&req.n);
++	ghdr->cmd = IPOE_CMD_DEL_EXCLUDE;
++
++	addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
++
++	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
++		log_ppp_error("ipoe: nl_add_net: error talking to kernel\n");
++	
++	rtnl_close(&rth);
++}
++
+ void ipoe_nl_delete_interfaces(void)
+ {
+ 	struct nlmsghdr *nlh;
+@@ -638,7 +708,7 @@ static int ipoe_mc_read(struct triton_md_handler_t *h)
+ 
+ static void ipoe_mc_close(struct triton_context_t *ctx)
+ {
+-	triton_md_unregister_handler(&mc_hnd);
++	triton_md_unregister_handler(&mc_hnd, 0);
+ 	triton_context_unregister(ctx);
+ }
+ 
+@@ -673,6 +743,8 @@ static void init(void)
+ 	triton_md_register_handler(&mc_ctx, &mc_hnd);
+ 	triton_md_enable_handler(&mc_hnd, MD_MODE_READ);
+ 	triton_context_wakeup(&mc_ctx);
++
++	ipoe_nl_del_exclude(0);
+ }
+ 
+ DEFINE_INIT(19, init);
+diff --git a/accel-pppd/ctrl/ipoe/lua.c b/accel-pppd/ctrl/ipoe/lua.c
+index 4fb6380..46c8594 100644
+--- a/accel-pppd/ctrl/ipoe/lua.c
++++ b/accel-pppd/ctrl/ipoe/lua.c
+@@ -230,10 +230,12 @@ out_err:
+     }*/
+ 
+ 
+-int ipoe_lua_set_username(struct ipoe_session *ses, const char *func)
++char *ipoe_lua_get_username(struct ipoe_session *ses, const char *func)
+ {
++	char *r;
++
+ 	if (file_error && serial == __serial)
+-		return -1;
++		return NULL;
+ 
+ 	if (L && serial != __serial) {
+ 		lua_close(L);
+@@ -242,7 +244,7 @@ int ipoe_lua_set_username(struct ipoe_session *ses, const char *func)
+ 		init_lua();
+ 
+ 	if (!L)
+-		return -1;
++		return NULL;
+ 
+ 	lua_getglobal(L, func);
+ 	lua_pushlightuserdata(L, ses);
+@@ -257,18 +259,18 @@ int ipoe_lua_set_username(struct ipoe_session *ses, const char *func)
+ 		goto out_err;
+ 	}
+ 
+-	ses->ses.username = _strdup(lua_tostring(L, -1));
++	r = _strdup(lua_tostring(L, -1));
+ 
+ 	lua_settop(L, 0);
+ 
+-	return 0;
++	return r;
+ 	
+ out_err:
+ 	file_error = 1;
+ 	lua_close(L);
+ 	L = NULL;
+ 	pthread_setspecific(__key, L);
+-	return -1;
++	return NULL;
+ }
+ 
+ static void load_config()
+diff --git a/accel-pppd/ctrl/l2tp/l2tp.c b/accel-pppd/ctrl/l2tp/l2tp.c
+index b41a48b..2a52d69 100644
+--- a/accel-pppd/ctrl/l2tp/l2tp.c
++++ b/accel-pppd/ctrl/l2tp/l2tp.c
+@@ -1135,7 +1135,7 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
+ 	pthread_mutex_unlock(&l2tp_lock);
+ 
+ 	if (conn->hnd.tpd)
+-		triton_md_unregister_handler(&conn->hnd);
++		triton_md_unregister_handler(&conn->hnd, 0);
+ 	if (conn->timeout_timer.tpd)
+ 		triton_timer_del(&conn->timeout_timer);
+ 	if (conn->rtimeout_timer.tpd)
+@@ -1533,7 +1533,7 @@ static int l2tp_tunnel_start(struct l2tp_conn_t *conn,
+ err_ctx_md_timer:
+ 	triton_timer_del(&conn->timeout_timer);
+ err_ctx_md:
+-	triton_md_unregister_handler(&conn->hnd);
++	triton_md_unregister_handler(&conn->hnd, 0);
+ err_ctx:
+ 	triton_context_unregister(&conn->ctx);
+ err:
+@@ -4428,8 +4428,7 @@ skip:
+ static void l2tp_udp_close(struct triton_context_t *ctx)
+ {
+ 	struct l2tp_serv_t *serv = container_of(ctx, typeof(*serv), ctx);
+-	triton_md_unregister_handler(&serv->hnd);
+-	close(serv->hnd.fd);
++	triton_md_unregister_handler(&serv->hnd, 1);
+ 	triton_context_unregister(&serv->ctx);
+ }
+ 
+@@ -4551,8 +4550,11 @@ static int start_udp_server(void)
+ 	return 0;
+ 
+ err_hnd:
+-	triton_md_unregister_handler(&udp_serv.hnd);
++	triton_md_unregister_handler(&udp_serv.hnd, 1);
+ 	triton_context_unregister(&udp_serv.ctx);
++	
++	return -1;
++
+ err_fd:
+ 	close(udp_serv.hnd.fd);
+ 	udp_serv.hnd.fd = -1;
+diff --git a/accel-pppd/ctrl/pppoe/pppoe.c b/accel-pppd/ctrl/pppoe/pppoe.c
+index 22ddf43..fba6291 100644
+--- a/accel-pppd/ctrl/pppoe/pppoe.c
++++ b/accel-pppd/ctrl/pppoe/pppoe.c
+@@ -33,8 +33,7 @@
+ 
+ #include "memdebug.h"
+ 
+-struct pppoe_conn_t
+-{
++struct pppoe_conn_t {
+ 	struct list_head entry;
+ 	struct triton_context_t ctx;
+ 	struct pppoe_serv_t *serv;
+@@ -89,7 +88,10 @@ char *conf_pado_delay;
+ int conf_tr101 = 1;
+ int conf_padi_limit = 0;
+ int conf_mppe = MPPE_UNSET;
++int conf_sid_uppercase = 0;
+ static const char *conf_ip_pool;
++enum {CSID_MAC, CSID_IFNAME, CSID_IFNAME_MAC};
++static int conf_called_sid;
+ 
+ static mempool_t conn_pool;
+ static mempool_t pado_pool;
+@@ -280,22 +282,53 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
+ 	conn->ctrl.name = "pppoe";
+ 	conn->ctrl.mppe = conf_mppe;
+ 
++	if (conf_called_sid == CSID_IFNAME)
++		conn->ctrl.called_station_id = _strdup(serv->ifname);
++	else if (conf_called_sid == CSID_IFNAME_MAC) {
++		conn->ctrl.called_station_id = _malloc(IFNAMSIZ + 19);
++		if (conf_sid_uppercase)
++		    sprintf(conn->ctrl.called_station_id, "%s:%02X:%02X:%02X:%02X:%02X:%02X", serv->ifname,
++			serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
++		else
++		    sprintf(conn->ctrl.called_station_id, "%s:%02x:%02x:%02x:%02x:%02x:%02x", serv->ifname,
++			serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
++
++	} else {
++		conn->ctrl.called_station_id = _malloc(IFNAMSIZ + 19);
++		if (conf_ifname_in_sid == 2 || conf_ifname_in_sid == 3)
++			if (conf_sid_uppercase)
++			    sprintf(conn->ctrl.called_station_id, "%s:%02X:%02X:%02X:%02X:%02X:%02X", serv->ifname,
++				serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
++			else
++			    sprintf(conn->ctrl.called_station_id, "%s:%02x:%02x:%02x:%02x:%02x:%02x", serv->ifname,
++				serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
++
++		else
++			if (conf_sid_uppercase)
++			    sprintf(conn->ctrl.called_station_id, "%02X:%02X:%02X:%02X:%02X:%02X",
++				serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
++			else
++			    sprintf(conn->ctrl.called_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
++				serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
++
++	}
++
+ 	conn->ctrl.calling_station_id = _malloc(IFNAMSIZ + 19);
+-	conn->ctrl.called_station_id = _malloc(IFNAMSIZ + 19);
+ 
+ 	if (conf_ifname_in_sid == 1 || conf_ifname_in_sid == 3)
+-		sprintf(conn->ctrl.calling_station_id, "%s:%02x:%02x:%02x:%02x:%02x:%02x", serv->ifname,
++		if (conf_sid_uppercase)
++		    sprintf(conn->ctrl.calling_station_id, "%s:%02X:%02X:%02X:%02X:%02X:%02X", serv->ifname,
+ 			addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+-	else
+-		sprintf(conn->ctrl.calling_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
++		else
++		    sprintf(conn->ctrl.calling_station_id, "%s:%02x:%02x:%02x:%02x:%02x:%02x", serv->ifname,
+ 			addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+-	
+-	if (conf_ifname_in_sid == 2 || conf_ifname_in_sid == 3)
+-		sprintf(conn->ctrl.called_station_id, "%s:%02x:%02x:%02x:%02x:%02x:%02x", serv->ifname,
+-			serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
+ 	else
+-		sprintf(conn->ctrl.called_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
+-			serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
++		if (conf_sid_uppercase)
++		    sprintf(conn->ctrl.calling_station_id, "%02X:%02X:%02X:%02X:%02X:%02X",
++			addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
++		else
++		    sprintf(conn->ctrl.calling_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
++			addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+ 	
+ 	ppp_init(&conn->ppp);
+ 
+@@ -1399,8 +1432,7 @@ void pppoe_server_free(struct pppoe_serv_t *serv)
+ 		free_delayed_pado(pado);
+ 	}
+ 
+-	triton_md_unregister_handler(&serv->hnd);
+-	close(serv->hnd.fd);
++	triton_md_unregister_handler(&serv->hnd, 1);
+ 	triton_context_unregister(&serv->ctx);
+ 	_free(serv->ifname);
+ 	_free(serv);
+@@ -1495,6 +1527,10 @@ static void load_config(void)
+ 	if (opt)
+ 		conf_padi_limit = atoi(opt);
+ 
++	opt = conf_get_opt("pppoe", "sid-uppercase");
++	if (opt)
++		conf_sid_uppercase = atoi(opt);
++
+ 	conf_mppe = MPPE_UNSET;
+ 	opt = conf_get_opt("pppoe", "mppe");
+ 	if (opt) {
+@@ -1509,6 +1545,19 @@ static void load_config(void)
+ 	}
+ 
+ 	conf_ip_pool = conf_get_opt("pppoe", "ip-pool");
++
++	conf_called_sid = CSID_MAC;
++	opt = conf_get_opt("pppoe", "called-sid");
++	if (opt) {
++		if (!strcmp(opt, "mac"))
++			conf_called_sid = CSID_MAC;
++		else if (!strcmp(opt, "ifname"))
++			conf_called_sid = CSID_IFNAME;
++		else if (!strcmp(opt, "ifname:mac"))
++			conf_called_sid = CSID_IFNAME_MAC;
++		else
++			log_error("pppoe: unknown called-sid type\n");
++	}
+ }
+ 
+ static void pppoe_init(void)
+diff --git a/accel-pppd/ctrl/pptp/pptp.c b/accel-pppd/ctrl/pptp/pptp.c
+index 46e980e..92770bf 100644
+--- a/accel-pppd/ctrl/pptp/pptp.c
++++ b/accel-pppd/ctrl/pptp/pptp.c
+@@ -77,8 +77,7 @@ static void disconnect(struct pptp_conn_t *conn)
+ {
+ 	log_ppp_debug("pptp: disconnect\n");
+ 
+-	triton_md_unregister_handler(&conn->hnd);
+-	close(conn->hnd.fd);
++	triton_md_unregister_handler(&conn->hnd, 1);
+ 	
+ 	if (conn->timeout_timer.tpd)
+ 		triton_timer_del(&conn->timeout_timer);
+@@ -704,8 +703,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
+ static void pptp_serv_close(struct triton_context_t *ctx)
+ {
+ 	struct pptp_serv_t *s=container_of(ctx,typeof(*s),ctx);
+-	triton_md_unregister_handler(&s->hnd);
+-	close(s->hnd.fd);
++	triton_md_unregister_handler(&s->hnd, 1);
+ 	triton_context_unregister(ctx);
+ }
+ 
+diff --git a/accel-pppd/extra/ippool.c b/accel-pppd/extra/ippool.c
+index 825b8f3..1523802 100644
+--- a/accel-pppd/extra/ippool.c
++++ b/accel-pppd/extra/ippool.c
+@@ -51,6 +51,7 @@ static struct ipdb_t ipdb;
+ static in_addr_t conf_gw_ip_address;
+ static int conf_vendor = 0;
+ static int conf_attr = 88; // Framed-Pool
++static int conf_shuffle;
+ 
+ static int cnt;
+ static LIST_HEAD(pool_list);
+@@ -175,18 +176,71 @@ static void add_range(struct ippool_t *p, struct list_head *list, const char *na
+ 	p->generate = generate;
+ }
+ 
++static uint8_t get_random()
++{
++	static uint8_t buf[128];
++	static int pos = 0;
++	int r;
++
++	if (pos == 0)
++		read(urandom_fd, buf, 128);
++	
++	r = buf[pos++];
++
++	if (pos == 128)
++		pos = 0;
++	
++	return r;
++}
++
+ static void generate_pool_p2p(struct ippool_t *p)
+ {
+ 	struct ippool_item_t *it;
+ 	struct ipaddr_t *addr = NULL;
+ 	struct ipaddr_t *peer_addr;
++	struct list_head *pos, *pos1 = p->tunnel_list.next, *pos2 = p->tunnel_list.prev;
++	uint8_t r, t = 0;
+ 
+ 	while (1) {
+ 		if (list_empty(&p->tunnel_list))
+ 			break;
+ 		else {
+-			peer_addr = list_entry(p->tunnel_list.next, typeof(*peer_addr), entry);
+-			list_del(&peer_addr->entry);
++			if (conf_shuffle) {
++				if (pos1 == &p->tunnel_list)
++					pos1 = pos1->next;
++
++				if (pos2 == &p->tunnel_list)
++					pos2 = pos2->prev;
++
++				if (t++ < 10)
++					r = get_random();
++				else
++					r = get_random()%64;
++
++				if (r < 32)
++					pos = pos1;
++				else if (r < 64)
++					pos = pos2;
++
++				pos1 = pos1->next;
++				pos2 = pos2->prev;
++				
++				if (r >= 64)
++					continue;
++				
++				peer_addr = list_entry(pos, typeof(*peer_addr), entry);
++				if (pos == pos1)
++					pos1 = pos1->next;
++				
++				if (pos == pos2)
++					pos2 = pos2->prev;
++				
++				list_del(&peer_addr->entry);
++				t = 0;
++			} else {
++				peer_addr = list_entry(p->tunnel_list.next, typeof(*peer_addr), entry);
++				list_del(&peer_addr->entry);
++			}
+ 		}
+ 
+ 		if (!conf_gw_ip_address) {
+@@ -536,6 +590,8 @@ static void ippool_init2(void)
+ #endif
+ 		if (!strcmp(opt->name, "gw-ip-address"))
+ 			parse_gw_ip_address(opt->val);
++		else if (!strcmp(opt->name, "shuffle"))
++			conf_shuffle = atoi(opt->val);
+ 		else {
+ 			pool_name = NULL;
+ 			allocator = NULL;
+diff --git a/accel-pppd/extra/ipv6pool.c b/accel-pppd/extra/ipv6pool.c
+index 5a9dde9..0ca270c 100644
+--- a/accel-pppd/extra/ipv6pool.c
++++ b/accel-pppd/extra/ipv6pool.c
+@@ -28,55 +28,105 @@ struct dppool_item_t
+ 	struct ipv6db_prefix_t it;
+ };
+ 
+-
+ static LIST_HEAD(ippool);
+ static LIST_HEAD(dppool);
+-static spinlock_t pool_lock = SPINLOCK_INITIALIZER;
++static spinlock_t pool_lock;
+ static struct ipdb_t ipdb;
+ 
++static void in6_addr_add(struct in6_addr *res, const struct in6_addr *arg)
++{
++	uint16_t n = 0;
++	int i;
++
++	for (i = 15; i >= 0; i--) {
++		n = (uint16_t)res->s6_addr[i] + arg->s6_addr[i] + (n >> 8);
++		res->s6_addr[i] = n & 0xff;
++	}
++}
++
++static int in6_addr_cmp(const struct in6_addr *n1, const struct in6_addr *n2)
++{
++	int i;
++
++	for (i = 0; i < 16; i++) {
++		if (n1->s6_addr[i] < n2->s6_addr[i])
++			return -1;
++		if (n1->s6_addr[i] > n2->s6_addr[i])
++			return 1;
++	}
++
++	return 0;
++}
++
+ static void generate_ippool(struct in6_addr *addr, int mask, int prefix_len)
+ {
+ 	struct ippool_item_t *it;
+-	uint64_t ip, endip, step;
+ 	struct ipv6db_addr_t *a;
++	struct in6_addr ip, end, step;
+ 
+-	ip = be64toh(*(uint64_t *)addr->s6_addr);
+-	endip = ip | ((1llu << (64 - mask)) - 1);
+-	step = 1 << (64 - prefix_len);
+-	
+-	for (; ip <= endip; ip += step) {
++	memcpy(&ip, addr, sizeof(ip));
++
++	memcpy(&end, addr, sizeof(end));
++	if (mask > 64)
++		*(uint64_t *)(end.s6_addr + 8) = htobe64(be64toh(*(uint64_t *)(end.s6_addr + 8)) | ((1llu << (128 - mask)) - 1));
++	else {
++		memset(end.s6_addr + 8, 0xff, 8);
++		*(uint64_t *)end.s6_addr = htobe64(be64toh(*(uint64_t *)end.s6_addr) | ((1llu << (64 - mask)) - 1));
++	}
++
++	memset(&step, 0, sizeof(step));
++	if (prefix_len > 64)
++		*(uint64_t *)(step.s6_addr + 8) = htobe64(1llu << (128 - prefix_len));
++	else
++		*(uint64_t *)step.s6_addr = htobe64(1llu << (64 - prefix_len));
++		
++	while (in6_addr_cmp(&ip, &end) <= 0) {
+ 		it = malloc(sizeof(*it));
+ 		it->it.owner = &ipdb;
+ 		INIT_LIST_HEAD(&it->it.addr_list);
+ 		a = malloc(sizeof(*a));
+ 		memset(a, 0, sizeof(*a));
+-		*(uint64_t *)a->addr.s6_addr = htobe64(ip);
++		memcpy(&a->addr, &ip, sizeof(ip));
+ 		a->prefix_len = prefix_len;
+ 		list_add_tail(&a->entry, &it->it.addr_list);
+ 		list_add_tail(&it->entry, &ippool);
++		in6_addr_add(&ip, &step);
+ 	}
+ }
+ 
+ static void generate_dppool(struct in6_addr *addr, int mask, int prefix_len)
+ {
+ 	struct dppool_item_t *it;
+-	uint64_t ip, endip, step;
++	struct in6_addr ip, end, step;
+ 	struct ipv6db_addr_t *a;
+ 
+-	ip = be64toh(*(uint64_t *)addr->s6_addr);
+-	endip = ip | ((1llu << (64 - mask)) - 1);
+-	step = 1 << (64 - prefix_len);
++	memcpy(&ip, addr, sizeof(ip));
++
++	memcpy(&end, addr, sizeof(end));
++	if (mask > 64)
++		*(uint64_t *)(end.s6_addr + 8) = htobe64(be64toh(*(uint64_t *)(end.s6_addr + 8)) | ((1llu << (128 - mask)) - 1));
++	else {
++		memset(end.s6_addr + 8, 0xff, 8);
++		*(uint64_t *)end.s6_addr = htobe64(be64toh(*(uint64_t *)end.s6_addr) | ((1llu << (64 - mask)) - 1));
++	}
++
++	memset(&step, 0, sizeof(step));
++	if (prefix_len > 64)
++		*(uint64_t *)(step.s6_addr + 8) = htobe64(1llu << (128 - prefix_len));
++	else
++		*(uint64_t *)step.s6_addr = htobe64(1llu << (64 - prefix_len));
+ 	
+-	for (; ip <= endip; ip += step) {
++	while (in6_addr_cmp(&ip, &end) <= 0) {
+ 		it = malloc(sizeof(*it));
+ 		it->it.owner = &ipdb;
+ 		INIT_LIST_HEAD(&it->it.prefix_list);
+ 		a = malloc(sizeof(*a));
+ 		memset(a, 0, sizeof(*a));
+-		*(uint64_t *)a->addr.s6_addr = htobe64(ip);
++		memcpy(&a->addr, &ip, sizeof(ip));
+ 		a->prefix_len = prefix_len;
+ 		list_add_tail(&a->entry, &it->it.prefix_list);
+ 		list_add_tail(&it->entry, &dppool);
++		in6_addr_add(&ip, &step);
+ 	}
+ }
+ 
+@@ -107,13 +157,13 @@ static void add_prefix(int type, const char *_val)
+ 	if (sscanf(ptr1 + 1, "%i", &mask) != 1)
+ 		goto err;
+ 	
+-	if (mask < 7 || mask > 64)
++	if (mask < 7 || mask > 127)
+ 		goto err;
+ 	
+ 	if (sscanf(ptr2 + 1, "%i", &prefix_len) != 1)
+ 		goto err;
+ 	
+-	if (prefix_len > 64  || prefix_len < mask)
++	if (prefix_len > 128  || prefix_len < mask)
+ 		goto err;
+ 	
+ 	if (type)
+@@ -190,7 +240,9 @@ static void ippool_init(void)
+ {
+ 	struct conf_sect_t *s = conf_get_section("ipv6-pool");
+ 	struct conf_option_t *opt;
+-	
++
++	spinlock_init(&pool_lock);
++
+ 	if (!s)
+ 		return;
+ 	
+diff --git a/accel-pppd/extra/net-snmp/CMakeLists.txt b/accel-pppd/extra/net-snmp/CMakeLists.txt
+index 5571849..40dff89 100644
+--- a/accel-pppd/extra/net-snmp/CMakeLists.txt
++++ b/accel-pppd/extra/net-snmp/CMakeLists.txt
+@@ -17,8 +17,7 @@ SET(sources
+ )
+ 
+ ADD_LIBRARY(net-snmp SHARED ${sources})
+-TARGET_LINK_LIBRARIES(net-snmp netsnmpagent netsnmphelpers netsnmpmibs
+-netsnmp)
++TARGET_LINK_LIBRARIES(net-snmp netsnmpagent netsnmphelpers netsnmpmibs netsnmp rt pthread)
+ 
+ IF (NETSNMP_PREFIX)
+ 	SET_PROPERTY(TARGET net-snmp PROPERTY COMPILE_FLAGS "-I${NETSNMP_PREFIX}/include")
+diff --git a/accel-pppd/extra/pppd_compat.c b/accel-pppd/extra/pppd_compat.c
+index 7bdf597..e005e8b 100644
+--- a/accel-pppd/extra/pppd_compat.c
++++ b/accel-pppd/extra/pppd_compat.c
+@@ -430,6 +430,7 @@ static void write_radattr(struct pppd_compat_pd *pd, struct rad_packet_t *pack)
+ 	FILE *f;
+ 	char *fname1, *fname2 = NULL;
+ 	int i;
++	in_addr_t addr;
+ 
+ 	fname1 = _malloc(PATH_MAX);
+ 	if (!fname1) {
+@@ -478,7 +479,8 @@ static void write_radattr(struct pppd_compat_pd *pd, struct rad_packet_t *pack)
+ 					fprintf(f, "\n");
+ 					break;
+ 				case ATTR_TYPE_IPADDR:
+-					fprintf(f, "%i.%i.%i.%i\n", attr->val.ipaddr & 0xff, (attr->val.ipaddr >> 8) & 0xff, (attr->val.ipaddr >> 16) & 0xff, (attr->val.ipaddr >> 24) & 0xff);
++					addr = ntohl(attr->val.ipaddr);
++					fprintf(f, "%i.%i.%i.%i\n", (addr >> 24) & 0xff, (addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff);
+ 					break;
+ 				case ATTR_TYPE_DATE:
+ 					fprintf(f, "%lu\n", attr->val.date);
+diff --git a/accel-pppd/ifcfg.c b/accel-pppd/ifcfg.c
+index ea1ac2f..3190873 100644
+--- a/accel-pppd/ifcfg.c
++++ b/accel-pppd/ifcfg.c
+@@ -13,11 +13,13 @@
+ #include "linux_ppp.h"
+ 
+ #include "triton.h"
++#include "iputils.h"
+ #include "events.h"
+ #include "ppp.h"
+ #include "ipdb.h"
+ #include "log.h"
+ #include "backup.h"
++#include "memdebug.h"
+ 
+ // from /usr/include/linux/ipv6.h
+ struct in6_ifreq {
+@@ -63,6 +65,15 @@ void ap_session_ifup(struct ap_session *ses)
+ 	struct sockaddr_in addr;
+ 	struct ppp_t *ppp;
+ 	
++	if (ses->ifname_rename) {
++		if (ap_session_rename(ses, ses->ifname_rename, -1)) {
++			ap_session_terminate(ses, TERM_NAS_ERROR, 0);
++			return;
++		}
++		_free(ses->ifname_rename);
++		ses->ifname_rename = NULL;
++	}
++
+ 	triton_event_fire(EV_SES_ACCT_START, ses);
+ 	if (ses->stop_time)
+ 		return;
+@@ -140,14 +151,15 @@ void ap_session_ifup(struct ap_session *ses)
+ 				}
+ 				
+ 				list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
+-					if (a->prefix_len == 128)
+-						continue;
+-
+-					build_addr(a, ses->ipv6->intf_id, &ifr6.ifr6_addr);
+-					ifr6.ifr6_prefixlen = a->prefix_len;
+-
+-					if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6))
+-						log_ppp_error("failed to add IPv6 address: %s\n", strerror(errno));
++					/*if (a->prefix_len < 128) {
++						build_addr(a, ses->ipv6->intf_id, &ifr6.ifr6_addr);
++						ifr6.ifr6_prefixlen = a->prefix_len;
++
++						if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6))
++							log_ppp_error("failed to add IPv6 address: %s\n", strerror(errno));
++					} else*/
++					if (ip6route_add(ses->ifindex, &a->addr, a->prefix_len, 0))
++						log_ppp_error("failed to add IPv6 route: %s\n", strerror(errno));
+ 				}
+ 			}
+ 
+@@ -230,3 +242,36 @@ void __export ap_session_ifdown(struct ap_session *ses)
+ 	}
+ }
+ 
++int __export ap_session_rename(struct ap_session *ses, const char *ifname, int len)
++{
++	struct ifreq ifr;
++
++	if (len == -1)
++		len = strlen(ifname);
++	
++	if (len >= IFNAMSIZ - 1) {
++		log_ppp_warn("cannot rename interface (name is too long)\n");
++		return -1;
++	}
++
++	ifr.ifr_ifindex = ses->ifindex;
++	strcpy(ifr.ifr_name, ses->ifname);
++	memcpy(ifr.ifr_newname, ifname, len);
++	ifr.ifr_newname[len] = 0;
++	
++	if (ioctl(sock_fd, SIOCSIFNAME, &ifr)) {
++		if (!ses->ifname_rename)
++			ses->ifname_rename = _strdup(ifr.ifr_newname);
++		else {
++			log_ppp_warn("interface rename failed: %s\n", strerror(errno));
++			return -1;
++		}
++	} else {
++		log_ppp_info2("rename interface to '%s'\n", ifr.ifr_newname);	
++		memcpy(ses->ifname, ifname, len);
++		ses->ifname[len] = 0;
++	}
++
++	return 0;
++}
++
+diff --git a/accel-pppd/include/ap_session.h b/accel-pppd/include/ap_session.h
+index ecbac53..f6d92d7 100644
+--- a/accel-pppd/include/ap_session.h
++++ b/accel-pppd/include/ap_session.h
+@@ -66,6 +66,7 @@ struct ap_session
+ 	int state;
+ 	char *chan_name;
+ 	char ifname[AP_IFNAME_LEN];
++	char *ifname_rename;
+ 	int unit_idx;
+ 	int ifindex;
+ 	char sessionid[AP_SESSIONID_LEN+1];
+@@ -86,6 +87,8 @@ struct ap_session
+ 	struct backup_data *backup;
+ #endif
+ 
++	struct triton_context_t *wakeup;
++
+ 	int terminating:1;
+ 	int terminated:1;
+ 	int terminate_cause;
+@@ -124,10 +127,11 @@ int ap_session_starting(struct ap_session *ses);
+ void ap_session_finished(struct ap_session *ses);
+ void ap_session_terminate(struct ap_session *ses, int cause, int hard);
+ void ap_session_activate(struct ap_session *ses);
+-int ap_session_check_single(const char *username);
++int ap_session_set_username(struct ap_session *ses, char *username);
+ 
+ void ap_session_ifup(struct ap_session *ses);
+ void ap_session_ifdown(struct ap_session *ses);
++int ap_session_rename(struct ap_session *ses, const char *ifname, int len);
+ 
+ int ap_session_read_stats(struct ap_session *ses, struct rtnl_link_stats *stats);
+ 
+diff --git a/accel-pppd/ipv6/dhcpv6.c b/accel-pppd/ipv6/dhcpv6.c
+index 5c6d1a5..67b1b75 100644
+--- a/accel-pppd/ipv6/dhcpv6.c
++++ b/accel-pppd/ipv6/dhcpv6.c
+@@ -40,9 +40,10 @@ static int conf_dns_count;
+ static void *conf_dnssl;
+ static int conf_dnssl_size;
+ 
+-struct dhcpv6_pd
+-{
++struct dhcpv6_pd {
+ 	struct ap_private pd;
++	struct ap_session *ses;
++	struct triton_md_handler_t hnd;
+ 	struct dhcpv6_opt_clientid *clientid;
+ 	uint32_t addr_iaid;
+ 	uint32_t dp_iaid;
+@@ -50,35 +51,71 @@ struct dhcpv6_pd
+ 	int dp_active:1;
+ };
+ 
+-static struct triton_md_handler_t dhcpv6_hnd;
+-static struct triton_context_t dhcpv6_ctx;
+-
+-static uint8_t *buf;
+ static void *pd_key;
+ 
+-static void ev_ppp_started(struct ap_session *ses)
++static int dhcpv6_read(struct triton_md_handler_t *h);
++
++static void ev_ses_started(struct ap_session *ses)
+ {
+ 	struct ipv6_mreq mreq;
+ 	struct dhcpv6_pd *pd;
++	struct sockaddr_in6 addr;
++	int sock;
++	int f = 1;
+ 
+ 	if (!ses->ipv6)
+ 		return;
++	
++	sock = socket(AF_INET6, SOCK_DGRAM, 0);
++	if (!sock) {
++		log_ppp_error("dhcpv6: socket: %s\n", strerror(errno));
++		return;
++	}
++  
++	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &f, sizeof(f));  
+ 
+-	pd = _malloc(sizeof(*pd));
+-	memset(pd, 0, sizeof(*pd));
++	if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, ses->ifname, strlen(ses->ifname))) {
++		log_ppp_error("ipv6_nd: setsockopt(SO_BINDTODEVICE): %s\n", strerror(errno));
++		close(sock);
++		return;
++	}
+ 	
+-	pd->pd.key = &pd_key;
+-	list_add_tail(&pd->pd.entry, &ses->pd_list);
++	memset(&addr, 0, sizeof(addr));
++	addr.sin6_family = AF_INET6;
++	addr.sin6_port = htons(DHCPV6_SERV_PORT);
++	
++	if (bind(sock, (struct sockaddr *)&addr, sizeof(addr))) {
++		log_ppp_error("dhcpv6: bind: %s\n", strerror(errno));
++		close(sock);
++		return;
++	}
+ 
+ 	memset(&mreq, 0, sizeof(mreq));
+ 	mreq.ipv6mr_interface = ses->ifindex;
+ 	mreq.ipv6mr_multiaddr.s6_addr32[0] = htonl(0xff020000);
+ 	mreq.ipv6mr_multiaddr.s6_addr32[3] = htonl(0x010002);
+ 
+-	if (setsockopt(dhcpv6_hnd.fd, SOL_IPV6, IPV6_ADD_MEMBERSHIP, &mreq, sizeof(mreq))) {
++	if (setsockopt(sock, SOL_IPV6, IPV6_ADD_MEMBERSHIP, &mreq, sizeof(mreq))) {
+ 		log_ppp_error("dhcpv6: failed to join to All_DHCP_Relay_Agents_and_Servers\n");
++		close(sock);
+ 		return;
+ 	}
++	
++	fcntl(sock, F_SETFL, O_NONBLOCK);
++	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
++
++	pd = _malloc(sizeof(*pd));
++	memset(pd, 0, sizeof(*pd));
++	
++	pd->pd.key = &pd_key;
++	list_add_tail(&pd->pd.entry, &ses->pd_list);
++
++	pd->ses = ses;
++
++	pd->hnd.fd = sock;
++	pd->hnd.read = dhcpv6_read;
++	triton_md_register_handler(ses->ctrl->ctx, &pd->hnd);
++	triton_md_enable_handler(&pd->hnd, MD_MODE_READ);
+ }
+ 
+ static struct dhcpv6_pd *find_pd(struct ap_session *ses)
+@@ -93,7 +130,7 @@ static struct dhcpv6_pd *find_pd(struct ap_session *ses)
+ 	return NULL;
+ }
+ 
+-static void ev_ppp_finished(struct ap_session *ses)
++static void ev_ses_finished(struct ap_session *ses)
+ {
+ 	struct dhcpv6_pd *pd = find_pd(ses);
+ 
+@@ -107,24 +144,12 @@ static void ev_ppp_finished(struct ap_session *ses)
+ 	
+ 	if (pd->ipv6_dp)
+ 		ipdb_put_ipv6_prefix(ses, pd->ipv6_dp);
++	
++	triton_md_unregister_handler(&pd->hnd, 1);
+ 
+ 	_free(pd);
+ }
+ 
+-static void dhcpv6_send(struct dhcpv6_packet *reply)
+-{
+-	struct sockaddr_in6 addr;
+-
+-	memset(&addr, 0, sizeof(addr));
+-	addr.sin6_family = AF_INET6;
+-	addr.sin6_port = htons(DHCPV6_CLIENT_PORT);
+-	addr.sin6_addr.s6_addr32[0] = htons(0xfe80);
+-	*(uint64_t *)(addr.sin6_addr.s6_addr + 8) = reply->ses->ipv6->peer_intf_id;
+-	addr.sin6_scope_id = reply->ses->ifindex;
+-
+-	sendto(dhcpv6_hnd.fd, reply->hdr, reply->endptr - (void *)reply->hdr, 0, (struct sockaddr *)&addr, sizeof(addr));
+-}
+-
+ static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_addr *addr)
+ {
+ 	memcpy(addr, &a->addr, sizeof(*addr));
+@@ -405,7 +430,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
+ 		dhcpv6_packet_print(reply, log_ppp_info2);
+ 	}
+ 
+-	dhcpv6_send(reply);
++	sendto(pd->hnd.fd, reply->hdr, reply->endptr - (void *)reply->hdr, 0, (struct sockaddr *)&req->addr, sizeof(req->addr));
+ 
+ 	dhcpv6_packet_free(reply);
+ }
+@@ -551,7 +576,7 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd,
+ 		dhcpv6_packet_print(reply, log_ppp_info2);
+ 	}
+ 
+-	dhcpv6_send(reply);
++	sendto(pd->hnd.fd, reply->hdr, reply->endptr - (void *)reply->hdr, 0, (struct sockaddr *)&req->addr, sizeof(req->addr));
+ 
+ 	dhcpv6_packet_free(reply);
+ }
+@@ -559,11 +584,8 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd,
+ 
+ static void dhcpv6_recv_solicit(struct dhcpv6_packet *req)
+ {
+-	struct dhcpv6_pd *pd = find_pd(req->ses);
++	struct dhcpv6_pd *pd = req->pd;
+ 
+-	if (!pd)
+-		return;
+-	
+ 	if (!req->clientid) {
+ 		log_ppp_error("dhcpv6: no Client-ID option\n");
+ 		return;
+@@ -591,11 +613,8 @@ static void dhcpv6_recv_solicit(struct dhcpv6_packet *req)
+ 
+ static void dhcpv6_recv_request(struct dhcpv6_packet *req)
+ {
+-	struct dhcpv6_pd *pd = find_pd(req->ses);
++	struct dhcpv6_pd *pd = req->pd;
+ 
+-	if (!pd)
+-		return;
+-	
+ 	if (!req->clientid) {
+ 		log_ppp_error("dhcpv6: no Client-ID option\n");
+ 		return;
+@@ -619,11 +638,8 @@ static void dhcpv6_recv_request(struct dhcpv6_packet *req)
+ 
+ static void dhcpv6_recv_renew(struct dhcpv6_packet *req)
+ {
+-	struct dhcpv6_pd *pd = find_pd(req->ses);
++	struct dhcpv6_pd *pd = req->pd;
+ 
+-	if (!pd)
+-		return;
+-	
+ 	if (!req->clientid) {
+ 		log_ppp_error("dhcpv6: no Client-ID option\n");
+ 		return;
+@@ -656,7 +672,7 @@ static void dhcpv6_recv_renew(struct dhcpv6_packet *req)
+ 
+ static void dhcpv6_recv_information_request(struct dhcpv6_packet *req)
+ {
+-	struct dhcpv6_pd *pd = find_pd(req->ses);
++	struct dhcpv6_pd *pd = req->pd;
+ 	
+ 	if (req->rapid_commit) {
+ 		log_ppp_error("dhcpv6: unexpected Rapid-Commit option\n");
+@@ -670,11 +686,8 @@ static void dhcpv6_recv_information_request(struct dhcpv6_packet *req)
+ 
+ static void dhcpv6_recv_rebind(struct dhcpv6_packet *req)
+ {
+-	struct dhcpv6_pd *pd = find_pd(req->ses);
++	struct dhcpv6_pd *pd = req->pd;
+ 
+-	if (!pd)
+-		return;
+-	
+ 	if (!req->clientid) {
+ 		log_ppp_error("dhcpv6: no Client-ID option\n");
+ 		return;
+@@ -744,18 +757,21 @@ static void dhcpv6_recv_packet(struct dhcpv6_packet *pkt)
+ 
+ static int dhcpv6_read(struct triton_md_handler_t *h)
+ {
++	struct dhcpv6_pd *pd = container_of(h, typeof(*pd), hnd);
++	struct ap_session *ses = pd->ses;
+ 	int n;
+ 	struct sockaddr_in6 addr;
+ 	socklen_t len = sizeof(addr);
+ 	struct dhcpv6_packet *pkt;
+-	struct ap_session *ses;
++	uint8_t *buf = _malloc(BUF_SIZE);
+ 
+ 	while (1) {
+ 		n = recvfrom(h->fd, buf, BUF_SIZE, 0, &addr, &len);
+ 		if (n == -1) {
+ 			if (errno == EAGAIN)
+-				return 0;
++				break;
+ 			log_error("dhcpv6: read: %s\n", strerror(errno));
++			continue;
+ 		}
+ 
+ 		if (!IN6_IS_ADDR_LINKLOCAL(&addr.sin6_addr))
+@@ -769,46 +785,18 @@ static int dhcpv6_read(struct triton_md_handler_t *h)
+ 			continue;
+ 		}
+ 
+-		pthread_rwlock_rdlock(&ses_lock);
+-		list_for_each_entry(ses, &ses_list, entry) {
+-			if (ses->state != AP_STATE_ACTIVE)
+-				continue;
++		pkt->ses = ses;
++		pkt->pd = pd;
++		pkt->addr = addr;
+ 
+-			if (!ses->ipv6)
+-				continue;
+-
+-			if (ses->ifindex != addr.sin6_scope_id)
+-				continue;
+-
+-			if (ses->ipv6->peer_intf_id != *(uint64_t *)(addr.sin6_addr.s6_addr + 8))
+-				continue;
+-
+-			pkt->ses = ses;
+-
+-			triton_context_call(ses->ctrl->ctx, (triton_event_func)dhcpv6_recv_packet, pkt);
+-			break;
+-		}
+-		pthread_rwlock_unlock(&ses_lock);
++		dhcpv6_recv_packet(pkt);
+ 	}
+ 
+-	return 0;
+-}
++	_free(buf);
+ 
+-static void dhcpv6_close(struct triton_context_t *ctx)
+-{
+-	triton_md_unregister_handler(&dhcpv6_hnd);
+-	close(dhcpv6_hnd.fd);
+-	triton_context_unregister(ctx);
++	return 0;
+ }
+ 
+-static struct triton_md_handler_t dhcpv6_hnd = {
+-	.read = dhcpv6_read,
+-};
+-
+-static struct triton_context_t dhcpv6_ctx = {
+-	.close = dhcpv6_close,
+-};
+-
+ static void add_dnssl(const char *val)
+ {
+ 	int n = strlen(val);
+@@ -952,48 +940,14 @@ static void load_config(void)
+ 
+ static void init(void)
+ {
+-	struct sockaddr_in6 addr;
+-	int sock;
+-	int f = 1;
+-
+ 	if (!triton_module_loaded("ipv6_nd"))
+ 		log_warn("dhcpv6: ipv6_nd module is not loaded, you probably get misconfigured network environment\n");
+ 
+ 	load_config();
+ 
+-	sock = socket(AF_INET6, SOCK_DGRAM, 0);
+-	if (!sock) {
+-		log_error("dhcpv6: socket: %s\n", strerror(errno));
+-		return;
+-	}
+-	
+-	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
+-  setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &f, sizeof(f));  
+-
+-	memset(&addr, 0, sizeof(addr));
+-	addr.sin6_family = AF_INET6;
+-	addr.sin6_port = htons(DHCPV6_SERV_PORT);
+-	
+-	if (bind(sock, (struct sockaddr *)&addr, sizeof(addr))) {
+-		log_error("dhcpv6: bind: %s\n", strerror(errno));
+-		close(sock);
+-		return;
+-	}
+-
+-	fcntl(sock, F_SETFL, O_NONBLOCK);
+-
+-	dhcpv6_hnd.fd = sock;
+-
+-	buf = malloc(BUF_SIZE);
+-
+-	triton_context_register(&dhcpv6_ctx, NULL);
+-	triton_md_register_handler(&dhcpv6_ctx, &dhcpv6_hnd);
+-	triton_md_enable_handler(&dhcpv6_hnd, MD_MODE_READ);
+-	triton_context_wakeup(&dhcpv6_ctx);
+-
+ 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
+-	triton_event_register_handler(EV_SES_STARTED, (triton_event_func)ev_ppp_started);
+-	triton_event_register_handler(EV_SES_FINISHED, (triton_event_func)ev_ppp_finished);
++	triton_event_register_handler(EV_SES_STARTED, (triton_event_func)ev_ses_started);
++	triton_event_register_handler(EV_SES_FINISHED, (triton_event_func)ev_ses_finished);
+ }
+ 
+ DEFINE_INIT(10, init);
+diff --git a/accel-pppd/ipv6/dhcpv6.h b/accel-pppd/ipv6/dhcpv6.h
+index 4afb5fa..82e366e 100644
+--- a/accel-pppd/ipv6/dhcpv6.h
++++ b/accel-pppd/ipv6/dhcpv6.h
+@@ -61,22 +61,19 @@
+ #define DUID_EN  2
+ #define DUID_LL  3
+ 
+-struct dhcpv6_opt_hdr
+-{
++struct dhcpv6_opt_hdr {
+ 	uint16_t code;
+ 	uint16_t len;
+ 	uint8_t data[0];
+ } __packed;
+ 
+-struct dhcpv6_msg_hdr
+-{
++struct dhcpv6_msg_hdr {
+ 	uint32_t type:8;
+ 	uint32_t trans_id:24;
+ 	uint8_t data[0];
+ } __packed;
+ 
+-struct dhcpv6_duid
+-{
++struct dhcpv6_duid {
+ 	uint16_t type;
+ 	union {
+ 		struct {
+@@ -96,56 +93,48 @@ struct dhcpv6_duid
+ 	} u;
+ } __packed;
+ 
+-struct dhcpv6_opt_clientid
+-{
++struct dhcpv6_opt_clientid {
+ 	struct dhcpv6_opt_hdr hdr;
+ 	struct dhcpv6_duid duid;
+ } __packed;
+ 
+-struct dhcpv6_opt_serverid
+-{
++struct dhcpv6_opt_serverid {
+ 	struct dhcpv6_opt_hdr hdr;
+ 	struct dhcpv6_duid duid;
+ } __packed;
+ 
+-struct dhcpv6_opt_ia_na
+-{
++struct dhcpv6_opt_ia_na {
+ 	struct dhcpv6_opt_hdr hdr;
+ 	uint32_t iaid;
+ 	uint32_t T1;
+ 	uint32_t T2;
+ } __packed;
+ 
+-struct dhcpv6_opt_ia_ta
+-{
++struct dhcpv6_opt_ia_ta {
+ 	struct dhcpv6_opt_hdr hdr;
+ 	uint32_t iaid;
+ } __packed;
+ 
+ 
+-struct dhcpv6_opt_ia_addr
+-{
++struct dhcpv6_opt_ia_addr {
+ 	struct dhcpv6_opt_hdr hdr;
+ 	struct in6_addr addr;
+ 	uint32_t pref_lifetime;
+ 	uint32_t valid_lifetime;
+ } __packed;
+ 
+-struct dhcpv6_opt_oro
+-{
++struct dhcpv6_opt_oro {
+ 	struct dhcpv6_opt_hdr hdr;
+ 	uint16_t opt[0];
+ } __packed;
+ 
+-struct dhcpv6_opt_status
+-{
++struct dhcpv6_opt_status {
+ 	struct dhcpv6_opt_hdr hdr;
+ 	uint16_t code;
+ 	char msg[0];
+ } __packed;
+ 
+-struct dhcpv6_opt_ia_prefix
+-{
++struct dhcpv6_opt_ia_prefix {
+ 	struct dhcpv6_opt_hdr hdr;
+ 	uint32_t pref_lifetime;
+ 	uint32_t valid_lifetime;
+@@ -154,8 +143,7 @@ struct dhcpv6_opt_ia_prefix
+ } __packed;
+ 
+ 
+-struct dhcpv6_option
+-{
++struct dhcpv6_option {
+ 	struct list_head entry;
+ 
+ 	struct dhcpv6_opt_hdr *hdr;
+@@ -164,10 +152,12 @@ struct dhcpv6_option
+ 	struct list_head opt_list;
+ };
+ 
+-struct ppp_t;
+-struct dhcpv6_packet
+-{
++struct dhcpv6_pd;
++
++struct dhcpv6_packet {
+ 	struct ap_session *ses;
++	struct dhcpv6_pd *pd;
++	struct sockaddr_in6 addr;
+ 	
+ 	struct dhcpv6_msg_hdr *hdr;
+ 	struct dhcpv6_opt_clientid *clientid;
+diff --git a/accel-pppd/ipv6/nd.c b/accel-pppd/ipv6/nd.c
+index eeaef7a..669840a 100644
+--- a/accel-pppd/ipv6/nd.c
++++ b/accel-pppd/ipv6/nd.c
+@@ -5,6 +5,7 @@
+ #include <string.h>
+ #include <errno.h>
+ #include <pthread.h>
++#include <sched.h>
+ #include <netinet/in.h>
+ #include <netinet/icmp6.h>
+ #include <arpa/inet.h>
+@@ -126,7 +127,7 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
+ 	
+ 	pinfo = (struct nd_opt_prefix_info *)(adv + 1);
+ 	list_for_each_entry(a, &h->ses->ipv6->addr_list, entry) {
+-		if (a->prefix_len > 64)
++		if (a->prefix_len != 64)
+ 			continue;
+ 			
+ 		memset(pinfo, 0, sizeof(*pinfo));
+@@ -255,7 +256,6 @@ static int ipv6_nd_start(struct ap_session *ses)
+ {
+ 	int sock;
+ 	struct icmp6_filter filter;
+-	struct sockaddr_in6 addr;
+ 	struct ipv6_mreq mreq;
+ 	int val;
+ 	struct ipv6_nd_handler_t *h;
+@@ -267,16 +267,8 @@ static int ipv6_nd_start(struct ap_session *ses)
+ 		return -1;
+ 	}
+ 
+-	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
+-
+-	memset(&addr, 0, sizeof(addr));
+-	addr.sin6_family = AF_INET6;
+-	addr.sin6_addr.s6_addr32[0] = htons(0xfe80);
+-	*(uint64_t *)(addr.sin6_addr.s6_addr + 8) = ses->ipv6->intf_id;
+-	addr.sin6_scope_id = ses->ifindex;
+-
+-	if (bind(sock, (struct sockaddr *)&addr, sizeof(addr))) {
+-		log_ppp_error("ipv6_nd: bind: %s %i\n", strerror(errno), errno);
++	if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, ses->ifname, strlen(ses->ifname))) {
++		log_ppp_error("ipv6_nd: setsockopt(SO_BINDTODEVICE): %s\n", strerror(errno));
+ 		goto out_err;
+ 	}
+ 
+@@ -321,6 +313,7 @@ static int ipv6_nd_start(struct ap_session *ses)
+ 		goto out_err;
+ 	}
+ 
++	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
+ 	fcntl(sock, F_SETFL, O_NONBLOCK);
+ 
+ 	h = _malloc(sizeof(*h));
+@@ -359,10 +352,17 @@ static struct ipv6_nd_handler_t *find_pd(struct ap_session *ses)
+ 
+ static void ev_ses_started(struct ap_session *ses)
+ {
++	struct ipv6db_addr_t *a;
++
+ 	if (!ses->ipv6)
+ 		return;
+ 
+-	ipv6_nd_start(ses);
++	list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
++		if (a->prefix_len == 64) {
++			ipv6_nd_start(ses);
++			break;
++		}
++	}
+ }
+ 
+ static void ev_ses_finishing(struct ap_session *ses)
+@@ -375,8 +375,7 @@ static void ev_ses_finishing(struct ap_session *ses)
+ 	if (h->timer.tpd)
+ 		triton_timer_del(&h->timer);
+ 
+-	triton_md_unregister_handler(&h->hnd);
+-	close(h->hnd.fd);
++	triton_md_unregister_handler(&h->hnd, 1);
+ 
+ 	list_del(&h->pd.entry);
+ 	
+diff --git a/accel-pppd/libnetlink/iputils.c b/accel-pppd/libnetlink/iputils.c
+index fbb32c6..7077098 100644
+--- a/accel-pppd/libnetlink/iputils.c
++++ b/accel-pppd/libnetlink/iputils.c
+@@ -274,7 +274,7 @@ int __export ipaddr_add(int ifindex, in_addr_t addr, int mask)
+ 	return 0;
+ }
+ 
+-int __export ipaddr_del(int ifindex, in_addr_t addr)
++int __export ipaddr_del(int ifindex, in_addr_t addr, int mask)
+ {
+ 	struct ipaddr_req {
+ 		struct nlmsghdr n;
+@@ -295,7 +295,7 @@ int __export ipaddr_del(int ifindex, in_addr_t addr)
+ 	req.n.nlmsg_type = RTM_DELADDR;
+ 	req.i.ifa_family = AF_INET;
+ 	req.i.ifa_index = ifindex;
+-	req.i.ifa_prefixlen = 32;
++	req.i.ifa_prefixlen = mask;
+ 
+ 	addattr32(&req.n, sizeof(req), IFA_LOCAL, addr);
+ 
+@@ -377,6 +377,42 @@ int __export iproute_del(int ifindex, in_addr_t dst, int proto)
+ 	return 0;
+ }
+ 
++int __export ip6route_add(int ifindex, struct in6_addr *dst, int pref_len, int proto)
++{
++	struct ipaddr_req {
++		struct nlmsghdr n;
++		struct rtmsg i;
++		char buf[4096];
++	} req;
++
++	if (!rth)
++		open_rth();
++	
++	if (!rth)
++		return -1;
++
++	memset(&req, 0, sizeof(req) - 4096);
++	
++	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
++	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
++	req.n.nlmsg_type = RTM_NEWROUTE;
++	req.i.rtm_family = AF_INET6;
++	req.i.rtm_table = RT_TABLE_MAIN;
++	req.i.rtm_scope = RT_SCOPE_LINK;
++	req.i.rtm_protocol = proto;
++	req.i.rtm_type = RTN_UNICAST;
++	req.i.rtm_dst_len = pref_len;
++
++	addattr_l(&req.n, sizeof(req), RTA_DST, dst, sizeof(*dst));
++	addattr32(&req.n, sizeof(req), RTA_OIF, ifindex);
++
++	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
++		return -1;
++	
++	return 0;
++
++}
++
+ in_addr_t __export iproute_get(in_addr_t dst)
+ {
+ 	struct ipaddr_req {
+diff --git a/accel-pppd/libnetlink/iputils.h b/accel-pppd/libnetlink/iputils.h
+index 896b4cc..0c88793 100644
+--- a/accel-pppd/libnetlink/iputils.h
++++ b/accel-pppd/libnetlink/iputils.h
+@@ -12,12 +12,14 @@ int iplink_vlan_add(const char *ifname, int ifindex, int vid);
+ int iplink_vlan_del(int ifindex);
+ 
+ int ipaddr_add(int ifindex, in_addr_t addr, int mask);
+-int ipaddr_del(int ifindex, in_addr_t addr);
++int ipaddr_del(int ifindex, in_addr_t addr, int mask);
+ 
+ int iproute_add(int ifindex, in_addr_t src, in_addr_t dst, int proto);
+ int iproute_del(int ifindex, in_addr_t dst, int proto);
+ in_addr_t iproute_get(in_addr_t dst);
+ 
++int ip6route_add(int ifindex, struct in6_addr *dst, int prefix_len, int proto);
++
+ int iprule_add(uint32_t addr, int table);
+ int iprule_del(uint32_t addr, int table);
+ #endif
+diff --git a/accel-pppd/log.c b/accel-pppd/log.c
+index 0612152..dcb2b11 100644
+--- a/accel-pppd/log.c
++++ b/accel-pppd/log.c
+@@ -16,6 +16,10 @@
+ 
+ #include "memdebug.h"
+ 
++#ifndef min
++#define min(x,y) ((x)<(y)?(x):(y))
++#endif
++
+ #define LOG_MSG   0
+ #define LOG_ERROR 1
+ #define LOG_WARN  2
+@@ -306,9 +310,22 @@ static struct log_msg_t *clone_msg(struct _log_msg_t *msg)
+ static int add_msg(struct _log_msg_t *msg, const char *buf)
+ {
+ 	struct log_chunk_t *chunk;
+-	int i, len, chunk_cnt;
++	int i, chunk_cnt, len = strlen(buf);
+ 	
+-	len = strlen(buf);
++	if (!list_empty(&msg->chunks)) {
++		chunk = list_entry(msg->chunks.prev, typeof(*chunk), entry);
++		i = min(len, LOG_CHUNK_SIZE - chunk->len);
++		memcpy(chunk->msg + chunk->len, buf, i);
++		chunk->len += i;
++		chunk->msg[chunk->len] = 0;
++		
++		if (i == len)
++			return 0;
++
++		buf += i;
++		len -= i;
++	}
++
+ 	chunk_cnt = (len - 1)/LOG_CHUNK_SIZE + 1;
+ 
+ 	for (i = 0; i < chunk_cnt; i++) {
+@@ -316,7 +333,7 @@ static int add_msg(struct _log_msg_t *msg, const char *buf)
+ 		if (!chunk)
+ 			return -1;
+ 
+-		chunk->len = i == chunk_cnt -1 ? len - i * LOG_CHUNK_SIZE : LOG_CHUNK_SIZE;
++		chunk->len = i == chunk_cnt - 1 ? len - i * LOG_CHUNK_SIZE : LOG_CHUNK_SIZE;
+ 		memcpy(chunk->msg, buf + i * LOG_CHUNK_SIZE, chunk->len);
+ 		chunk->msg[chunk->len] = 0;
+ 
+diff --git a/accel-pppd/logs/log_file.c b/accel-pppd/logs/log_file.c
+index 3a61823..518f2c9 100644
+--- a/accel-pppd/logs/log_file.c
++++ b/accel-pppd/logs/log_file.c
+@@ -9,6 +9,7 @@
+ #include <signal.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
++#include <sys/uio.h>
+ 
+ #include "log.h"
+ #include "events.h"
+@@ -26,8 +27,7 @@
+ #define BLUE_COLOR  	"\033[1;34m"
+ #define NORMAL_COLOR  "\033[0;39m"
+ 
+-struct log_file_t
+-{
++struct log_file_t {
+ 	struct list_head entry;
+ 	struct list_head msgs;
+ 	spinlock_t lock;
+@@ -37,30 +37,26 @@ struct log_file_t
+ 
+ 	int fd;
+ 	int new_fd;
+-	off_t offset;
+-	unsigned long magic;
+ };
+ 
+-struct log_file_pd_t
+-{
++struct log_file_pd_t {
+ 	struct ap_private pd;
+ 	struct log_file_t lf;
+ 	unsigned long tmp;
+ };
+ 
+-struct fail_log_pd_t
+-{
++struct fail_log_pd_t {
+ 	struct ap_private pd;
+ 	struct list_head msgs;
+ };
+ 
+-
+ static int conf_color;
+ static int conf_per_session;
+ static char *conf_per_user_dir;
+ static char *conf_per_session_dir;
+ static int conf_copy;
+ static int conf_fail_log;
++static pthread_t log_thr;
+ 
+ static const char* level_name[]={"  msg", "error", " warn", " info", " info", "debug"};
+ static const char* level_color[]={NORMAL_COLOR, RED_COLOR, YELLOW_COLOR, GREEN_COLOR, GREEN_COLOR, BLUE_COLOR};
+@@ -74,23 +70,13 @@ static struct log_file_t *fail_log_file;
+ 
+ static mempool_t lpd_pool;
+ static mempool_t fpd_pool;
+-static char *log_buf;
+-
+-static struct aiocb aiocb = {
+-	.aio_lio_opcode = LIO_WRITE,
+-	.aio_sigevent.sigev_notify = SIGEV_SIGNAL,
+-	.aio_sigevent.sigev_signo = SIGIO,
+-};
+ 
+ static LIST_HEAD(lf_queue);
+-static spinlock_t lf_queue_lock = SPINLOCK_INITIALIZER;
+-static int lf_queue_sleeping = 1;
++static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
++static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+ 
+ static unsigned long temp_seq;
+ 
+-static void send_next_chunk();
+-
+-
+ static void log_file_init(struct log_file_t *lf)
+ {
+ 	spinlock_init(&lf->lock);
+@@ -101,147 +87,117 @@ static void log_file_init(struct log_file_t *lf)
+ 
+ static int log_file_open(struct log_file_t *lf, const char *fname)
+ {
+-	lf->fd = open(fname, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
++	lf->fd = open(fname, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, S_IRUSR | S_IWUSR);
+ 	if (lf->fd < 0) {
+ 		log_emerg("log_file: open '%s': %s\n", fname, strerror(errno));
+ 		return -1;
+ 	} 
+ 	
+-	fcntl(lf->fd, F_SETFD, fcntl(lf->fd, F_GETFD) | FD_CLOEXEC);
+-	
+-	lf->offset = lseek(lf->fd, 0, SEEK_END);
+-	
+ 	return 0;
+ }
+ 
+-static void sigio(int num, siginfo_t *si, void *uc)
+-{
+-	struct log_file_t *lf;
+-	int n;
+-
+-	if (si->si_signo != SIGIO)
+-		return;
+-
+-	if (si->si_code != SI_ASYNCIO) {
+-		if (aio_write(&aiocb))
+-			log_emerg("log_file: aio_write: %s\n", strerror(errno));
+-		return;
+-	}
+-
+-	lf = (struct log_file_t *)si->si_ptr;
+-
+-	n = aio_return(&aiocb);
+-	if (n < 0)
+-		log_emerg("log_file: %s\n", strerror(aio_error(&aiocb)));
+-	else if (n != aiocb.aio_nbytes)
+-		log_emerg("log_file: short write %p %i %lu\n", lf, n, aiocb.aio_nbytes);
+-
+-	spin_lock(&lf->lock);
+-	lf->offset += n;
+-	if (list_empty(&lf->msgs)) {
+-		if (lf->need_free) {
+-			spin_unlock(&lf->lock);
+-			close(lf->fd);
+-			mempool_free(lf->lpd);
+-		} else {
+-			lf->queued = 0;
+-			spin_unlock(&lf->lock);
+-		}
+-	} else {
+-		spin_unlock(&lf->lock);
+-
+-		spin_lock(&lf_queue_lock);
+-		list_add_tail(&lf->entry, &lf_queue);
+-		spin_unlock(&lf_queue_lock);
+-	}
+-	
+-	send_next_chunk();
+-}
+-
+-static int dequeue_log(struct log_file_t *lf)
++static void purge(struct list_head *list)
+ {
+-	int n, pos = 0;
+ 	struct log_msg_t *msg;
+-	struct log_chunk_t *chunk;
+-
+-	while (1) {
+-		spin_lock(&lf->lock);
+-		if (list_empty(&lf->msgs)) {
+-			spin_unlock(&lf->lock);
+-			return pos;
+-		}
+-		msg = list_entry(lf->msgs.next, typeof(*msg), entry);
++	
++	while (!list_empty(list)) {
++		msg = list_first_entry(list, typeof(*msg), entry);
+ 		list_del(&msg->entry);
+-		spin_unlock(&lf->lock);
+-
+-		if (pos + msg->hdr->len > LOG_BUF_SIZE)
+-			goto overrun;
+-		memcpy(log_buf + pos, msg->hdr->msg, msg->hdr->len);
+-		n = msg->hdr->len;
+-
+-		list_for_each_entry(chunk, msg->chunks, entry) {
+-			if (pos + n + chunk->len > LOG_BUF_SIZE)
+-				goto overrun;
+-			memcpy(log_buf + pos + n, chunk->msg, chunk->len);
+-			n += chunk->len;
+-		}
+-
+ 		log_free_msg(msg);
+-		pos += n;
+ 	}
+-
+-overrun:
+-	spin_lock(&lf->lock);
+-	list_add(&msg->entry, &lf->msgs);
+-	spin_unlock(&lf->lock);
+-
+-	return pos;
+ }
+ 
+-static void send_next_chunk(void)
++static void *log_thread(void *unused)
+ {
+ 	struct log_file_t *lf;
+-
+-	spin_lock(&lf_queue_lock);
+-	if (list_empty(&lf_queue)) {
+-		lf_queue_sleeping = 1;
+-		spin_unlock(&lf_queue_lock);
+-		return;
+-	}
+-	lf = list_entry(lf_queue.next, typeof(*lf), entry);
++	struct iovec iov[IOV_MAX];
++	struct log_chunk_t *chunk;
++	struct log_msg_t *msg;
++	int iov_cnt;
++	LIST_HEAD(msg_list);
++	LIST_HEAD(free_list);
++	sigset_t set;
+ 	
+-	list_del(&lf->entry);
+-
+-	spin_unlock(&lf_queue_lock);
++	sigfillset(&set);
++	sigdelset(&set, SIGKILL);
++	sigdelset(&set, SIGSTOP);
++	pthread_sigmask(SIG_BLOCK, &set, NULL);
+ 
+-	if (lf->new_fd != -1) {
+-		close(lf->fd);
+-		lf->fd = lf->new_fd;
+-		lf->new_fd = -1;
+-		lf->offset = 0;
++	while (1) {
++		pthread_mutex_lock(&lock);
++		if (list_empty(&lf_queue))
++			pthread_cond_wait(&cond, &lock);
++		lf = list_first_entry(&lf_queue, typeof(*lf), entry);
++		list_del(&lf->entry);
++		pthread_mutex_unlock(&lock);
++
++		iov_cnt = 0;
++		
++		while (1) {
++			if (lf->new_fd != -1) {
++				close(lf->fd);
++				lf->fd = lf->new_fd;
++				lf->new_fd = -1;
++			}
++
++			spin_lock(&lf->lock);
++			if (list_empty(&lf->msgs)) {
++				if (iov_cnt) {
++					writev(lf->fd, iov, iov_cnt);
++					purge(&free_list);
++				}
++
++				lf->queued = 0;
++				if (lf->need_free) {
++					spin_unlock(&lf->lock);
++					close(lf->fd);
++					if (lf->new_fd != -1)
++						close(lf->new_fd);
++					mempool_free(lf->lpd);
++				} else
++					spin_unlock(&lf->lock);
++		
++				break;
++			}
++			
++			list_splice_init(&lf->msgs, &msg_list);
++			spin_unlock(&lf->lock);
++			
++			while (!list_empty(&msg_list)) {
++				msg = list_first_entry(&msg_list, typeof(*msg), entry);
++
++				iov[iov_cnt].iov_base = msg->hdr->msg;
++				iov[iov_cnt].iov_len = msg->hdr->len;
++				if (++iov_cnt == IOV_MAX) {
++					writev(lf->fd, iov, iov_cnt);
++					purge(&free_list);
++					iov_cnt = 0;
++				}
++
++				list_for_each_entry(chunk, msg->chunks, entry) {
++					iov[iov_cnt].iov_base = chunk->msg;
++					iov[iov_cnt].iov_len = chunk->len;
++					if (++iov_cnt == IOV_MAX) {
++						writev(lf->fd, iov, iov_cnt);
++						iov_cnt = 0;
++						purge(&free_list);
++					}
++				}
++				
++				list_move_tail(&msg->entry, &free_list);
++			}
++		}
+ 	}
+ 
+-	aiocb.aio_fildes = lf->fd;
+-	aiocb.aio_offset = lf->offset;
+-	aiocb.aio_sigevent.sigev_value.sival_ptr = lf;
+-	aiocb.aio_nbytes = dequeue_log(lf);
+-
+-	if (aio_write(&aiocb))
+-		log_emerg("log_file: aio_write: %s\n", strerror(errno));
++	return NULL;
+ }
+ 
+ static void queue_lf(struct log_file_t *lf)
+ {
+-	int r;
+-
+-	spin_lock(&lf_queue_lock);
++	pthread_mutex_lock(&lock);
+ 	list_add_tail(&lf->entry, &lf_queue);
+-	r = lf_queue_sleeping;
+-	lf_queue_sleeping = 0;
+-	spin_unlock(&lf_queue_lock);
+-
+-	if (r)
+-		send_next_chunk();
++	pthread_cond_signal(&cond);
++	pthread_mutex_unlock(&lock);
+ }
+ 
+ static void queue_log(struct log_file_t *lf, struct log_msg_t *msg)
+@@ -264,14 +220,9 @@ static void queue_log(struct log_file_t *lf, struct log_msg_t *msg)
+ static void queue_log_list(struct log_file_t *lf, struct list_head *l)
+ {
+ 	int r;
+-	struct log_msg_t *msg;
+ 
+ 	spin_lock(&lf->lock);
+-	while (!list_empty(l)) {
+-		msg = list_entry(l->next, typeof(*msg), entry);
+-		list_del(&msg->entry);
+-		list_add_tail(&msg->entry, &lf->msgs);
+-	}
++	list_splice_init(l, &lf->msgs);
+ 	if (lf->fd != -1) {
+ 		r = lf->queued;
+ 		lf->queued = 1;
+@@ -407,27 +358,48 @@ static void fail_log(struct log_target_t *t, struct log_msg_t *msg, struct ap_se
+ 
+ static void fail_reopen(void)
+ {
+-	char *fname = conf_get_opt("log", "log-fail-file");
+- 	int fd = open(fname, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
++	const char *fname = conf_get_opt("log", "log-fail-file");
++	int old_fd = -1;
++ 	int fd = open(fname, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, S_IRUSR | S_IWUSR);
+ 	if (fd < 0) {
+ 		log_emerg("log_file: open '%s': %s\n", fname, strerror(errno));
+ 		return;
+ 	}
+-	fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC);
+-	fail_log_file->new_fd = fd;
+-}
++	
++	spin_lock(&fail_log_file->lock);
++	if (fail_log_file->queued)
++		fail_log_file->new_fd = fd;
++	else {
++		old_fd = fail_log_file->fd;
++		fail_log_file->fd = fd;
++	}
++	spin_unlock(&fail_log_file->lock);
+ 
++	if (old_fd != -1)
++		close(old_fd);
++}
+ 
+ static void general_reopen(void)
+ {
+-	char *fname = conf_get_opt("log", "log-file");
+- 	int fd = open(fname, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
++	const char *fname = conf_get_opt("log", "log-file");
++	int old_fd = -1;
++ 	int fd = open(fname, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, S_IRUSR | S_IWUSR);
+ 	if (fd < 0) {
+ 		log_emerg("log_file: open '%s': %s\n", fname, strerror(errno));
+ 		return;
+ 	}
+-	fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC);
+-	log_file->new_fd = fd;
++
++	spin_lock(&log_file->lock);
++	if (log_file->queued)
++		log_file->new_fd = fd;
++	else {
++		old_fd = log_file->fd;
++		log_file->fd = fd;
++	}
++	spin_unlock(&log_file->lock);
++
++	if (old_fd != -1)
++		close(old_fd);
+ }
+ 
+ static void free_lpd(struct log_file_pd_t *lpd)
+@@ -447,6 +419,8 @@ static void free_lpd(struct log_file_pd_t *lpd)
+ 		}
+ 		if (lpd->lf.fd != -1)
+ 			close(lpd->lf.fd);
++		if (lpd->lf.new_fd != -1)
++			close(lpd->lf.fd);
+ 		spin_unlock(&lpd->lf.lock);
+ 		mempool_free(lpd);
+ 	}
+@@ -682,27 +656,12 @@ static struct log_target_t fail_log_target =
+ 
+ static void init(void)
+ {
+-	char *opt;
+-	
+-	sigset_t set;
+-	sigemptyset(&set);
+-	sigaddset(&set, SIGIO);
+-
+-	struct sigaction sa = {
+-		.sa_sigaction = sigio,
+-		.sa_flags = SA_SIGINFO,
+-		.sa_mask = set,
+-	};
++	const char *opt;
+ 
++	pthread_create(&log_thr, NULL, log_thread, NULL);
++	
+ 	lpd_pool = mempool_create(sizeof(struct log_file_pd_t));
+ 	fpd_pool = mempool_create(sizeof(struct fail_log_pd_t));
+-	log_buf = malloc(LOG_BUF_SIZE);
+-	aiocb.aio_buf = log_buf;
+-
+-	if (sigaction(SIGIO, &sa, NULL)) {
+-		log_emerg("log_file: sigaction: %s\n", strerror(errno));
+-		return;
+-	}
+ 
+ 	opt = conf_get_opt("log", "log-file");
+ 	if (opt) {
+diff --git a/accel-pppd/logs/log_pgsql.c b/accel-pppd/logs/log_pgsql.c
+index 1a62a9a..26c16c0 100644
+--- a/accel-pppd/logs/log_pgsql.c
++++ b/accel-pppd/logs/log_pgsql.c
+@@ -36,7 +36,7 @@ static PGconn *conn;
+ static LIST_HEAD(msg_queue);
+ static int queue_size;
+ static int sleeping = 0;
+-static spinlock_t queue_lock = SPINLOCK_INITIALIZER;
++static spinlock_t queue_lock;
+ static char *log_buf;
+ static int need_close;
+ 
+@@ -86,7 +86,7 @@ static void write_next_msg(void)
+ 		sleeping = 1;
+ 		spin_unlock(&queue_lock);
+ 		if (need_close) {
+-			triton_md_unregister_handler(&pgsql_hnd);
++			triton_md_unregister_handler(&pgsql_hnd, 0);
+ 			PQfinish(conn);
+ 			conn = NULL;
+ 			triton_context_unregister(&pgsql_ctx);
+@@ -267,7 +267,7 @@ static void pgsql_close(struct triton_context_t *ctx)
+ {
+ 	spin_lock(&queue_lock);
+ 	if (sleeping) {
+-		triton_md_unregister_handler(&pgsql_hnd);
++		triton_md_unregister_handler(&pgsql_hnd, 0);
+ 		PQfinish(conn);
+ 		conn = NULL;
+ 		triton_context_unregister(&pgsql_ctx);
+@@ -284,6 +284,8 @@ static void init(void)
+ {
+ 	char *opt;
+ 
++	spinlock_init(&queue_lock);
++
+ 	opt = conf_get_opt("log-pgsql", "conninfo");
+ 	if (!opt)
+ 		return;
+diff --git a/accel-pppd/logs/log_syslog.c b/accel-pppd/logs/log_syslog.c
+index cbab525..b0b079a 100644
+--- a/accel-pppd/logs/log_syslog.c
++++ b/accel-pppd/logs/log_syslog.c
+@@ -25,7 +25,7 @@ static struct triton_context_t syslog_ctx = {
+ static LIST_HEAD(msg_queue);
+ static int queue_size;
+ static int sleeping = 1;
+-static spinlock_t queue_lock = SPINLOCK_INITIALIZER;
++static spinlock_t queue_lock;
+ static char *log_buf;
+ static int need_close;
+ static char *ident;
+@@ -180,6 +180,8 @@ static void load_config()
+ 
+ static void init(void)
+ {
++	spinlock_init(&queue_lock);
++
+ 	log_buf = malloc(LOG_MAX_SIZE + 1);
+ 
+ 	load_config();
+diff --git a/accel-pppd/logs/log_tcp.c b/accel-pppd/logs/log_tcp.c
+index b89b7d6..5f592d9 100644
+--- a/accel-pppd/logs/log_tcp.c
++++ b/accel-pppd/logs/log_tcp.c
+@@ -47,8 +47,7 @@ static LIST_HEAD(targets);
+ 
+ static void disconnect(struct tcp_target_t *t)
+ {
+-	triton_md_unregister_handler(&t->hnd);
+-	close(t->hnd.fd);
++	triton_md_unregister_handler(&t->hnd, 1);
+ 
+ 	start_connect(t);
+ }
+@@ -170,8 +169,7 @@ static int log_tcp_connect(struct triton_md_handler_t *h)
+ 		if (errno == EINPROGRESS)
+ 			return 0;
+ 		log_emerg("log-tcp: connect: %s\n", strerror(errno));
+-		triton_md_unregister_handler(&t->hnd);
+-		close(t->hnd.fd);
++		triton_md_unregister_handler(&t->hnd, 1);
+ 		triton_timer_add(&tcp_ctx, &t->conn_timer, 0);
+ 		return 0;
+ 	}
+@@ -241,8 +239,7 @@ static void log_tcp_close(struct triton_context_t *ctx)
+ 			triton_timer_del(&t->conn_timer);
+ 		else {
+ 			t->connected = 0;
+-			triton_md_unregister_handler(&t->hnd);
+-			close(t->hnd.fd);
++			triton_md_unregister_handler(&t->hnd, 1);
+ 		}
+ 	}
+ 
+diff --git a/accel-pppd/memdebug.c b/accel-pppd/memdebug.c
+index 1f4af36..4b37400 100644
+--- a/accel-pppd/memdebug.c
++++ b/accel-pppd/memdebug.c
+@@ -40,7 +40,7 @@ struct mem_t
+ };
+ 
+ static LIST_HEAD(mem_list);
+-static spinlock_t mem_list_lock = SPINLOCK_INITIALIZER;
++static spinlock_t mem_list_lock;
+ 
+ static struct mem_t *_md_malloc(size_t size, const char *fname, int line)
+ {
+@@ -242,6 +242,8 @@ void __export md_check(void *ptr)
+ 
+ static void __init init(void)
+ {
++	spinlock_init(&mem_list_lock);
++
+ 	signal(36, siginfo);
+ 	signal(37, siginfo2);
+ }
+diff --git a/accel-pppd/ppp/lcp_opt_magic.c b/accel-pppd/ppp/lcp_opt_magic.c
+index bf39209..81eadd6 100644
+--- a/accel-pppd/ppp/lcp_opt_magic.c
++++ b/accel-pppd/ppp/lcp_opt_magic.c
+@@ -13,6 +13,7 @@ static void magic_free(struct ppp_lcp_t *lcp, struct lcp_option_t *opt);
+ static int magic_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
+ static int magic_send_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
+ static int magic_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
++static int magic_recv_conf_rej(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
+ static void magic_print(void (*print)(const char *fmt,...),struct lcp_option_t*, uint8_t *ptr);
+ 
+ struct magic_option_t
+@@ -27,6 +28,7 @@ static struct lcp_option_handler_t magic_opt_hnd=
+ 	.send_conf_req = magic_send_conf_req,
+ 	.send_conf_nak = magic_send_conf_nak,
+ 	.recv_conf_req = magic_recv_conf_req,
++	.recv_conf_rej = magic_recv_conf_rej,
+ 	.free = magic_free,
+ 	.print = magic_print,
+ };
+@@ -35,7 +37,7 @@ static struct lcp_option_t *magic_init(struct ppp_lcp_t *lcp)
+ {
+ 	struct magic_option_t *magic_opt = _malloc(sizeof(*magic_opt));
+ 	memset(magic_opt, 0, sizeof(*magic_opt));
+-	magic_opt->magic = random();
++	do { magic_opt->magic = random(); } while (magic_opt->magic == 0);
+ 	magic_opt->opt.id = CI_MAGIC;
+ 	magic_opt->opt.len = 6;
+ 
+@@ -53,21 +55,25 @@ static void magic_free(struct ppp_lcp_t *lcp, struct lcp_option_t *opt)
+ 
+ static int magic_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
+ {
+-	struct magic_option_t *magic_opt=container_of(opt,typeof(*magic_opt),opt);
++	struct magic_option_t *magic_opt = container_of(opt, typeof(*magic_opt), opt);
+ 	struct lcp_opt32_t *opt32 = (struct lcp_opt32_t *)ptr;
+-	opt32->hdr.id=CI_MAGIC;
+-	opt32->hdr.len=6;
+-	opt32->val=htonl(magic_opt->magic);
++	
++	if (!magic_opt->magic)
++		return 0;
++
++	opt32->hdr.id = CI_MAGIC;
++	opt32->hdr.len = 6;
++	opt32->val = htonl(magic_opt->magic);
+ 	return 6;
+ }
+ 
+ static int magic_send_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
+ {
+-	struct magic_option_t *magic_opt=container_of(opt,typeof(*magic_opt),opt);
++	struct magic_option_t *magic_opt = container_of(opt, typeof(*magic_opt), opt);
+ 	struct lcp_opt32_t *opt32 = (struct lcp_opt32_t *)ptr;
+-	opt32->hdr.id=CI_MAGIC;
+-	opt32->hdr.len=6;
+-	opt32->val=random();
++	opt32->hdr.id = CI_MAGIC;
++	opt32->hdr.len = 6;
++	do { opt32->val = random(); } while (opt32->val == magic_opt->magic);
+ 	return 6;
+ }
+ 
+@@ -88,6 +94,16 @@ static int magic_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt,
+ 	return LCP_OPT_ACK;
+ }
+ 
++static int magic_recv_conf_rej(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
++{
++	struct magic_option_t *magic_opt = container_of(opt, typeof(*magic_opt), opt);
++	
++	magic_opt->magic = 0;
++	lcp->magic = 0;
++
++	return 0;
++}
++
+ static void magic_print(void (*print)(const char *fmt,...),struct lcp_option_t *opt, uint8_t *ptr)
+ {
+ 	struct magic_option_t *magic_opt = container_of(opt, typeof(*magic_opt), opt);
+diff --git a/accel-pppd/ppp/ppp.c b/accel-pppd/ppp/ppp.c
+index 5363094..6e02480 100644
+--- a/accel-pppd/ppp/ppp.c
++++ b/accel-pppd/ppp/ppp.c
+@@ -185,13 +185,14 @@ exit_close_chan:
+ static void destablish_ppp(struct ppp_t *ppp)
+ {
+ 	struct pppunit_cache *uc;
++	int close_unit = uc_size >= conf_unit_cache;
+ 
+ 	triton_event_fire(EV_SES_PRE_FINISHED, &ppp->ses);
+ 
+-	triton_md_unregister_handler(&ppp->chan_hnd);
+-	triton_md_unregister_handler(&ppp->unit_hnd);
++	triton_md_unregister_handler(&ppp->chan_hnd, 1);
++	triton_md_unregister_handler(&ppp->unit_hnd, close_unit);
+ 	
+-	if (uc_size < conf_unit_cache) {
++	if (!close_unit) {
+ 		uc = mempool_alloc(uc_pool);
+ 		uc->fd = ppp->unit_fd;
+ 		uc->unit_idx = ppp->ses.unit_idx;
+@@ -200,14 +201,11 @@ static void destablish_ppp(struct ppp_t *ppp)
+ 		list_add_tail(&uc->entry, &uc_list);
+ 		++uc_size;
+ 		pthread_mutex_unlock(&uc_lock);
+-	} else
+-		close(ppp->unit_fd);
++	
++		ppp->chan_fd = -1;
++	}
+ 
+-	close(ppp->chan_fd);
+ 	close(ppp->fd);
+-
+-	ppp->unit_fd = -1;
+-	ppp->chan_fd = -1;
+ 	ppp->fd = -1;
+ 
+ 	_free_layers(ppp);
+diff --git a/accel-pppd/ppp/ppp_auth.c b/accel-pppd/ppp/ppp_auth.c
+index 0510358..5419655 100644
+--- a/accel-pppd/ppp/ppp_auth.c
++++ b/accel-pppd/ppp/ppp_auth.c
+@@ -328,7 +328,7 @@ static void __ppp_auth_started(struct ppp_t *ppp)
+ 	ppp_layer_started(ppp, &ad->ld);
+ 
+ 
+-	log_ppp_info1("%s: authentication succeeded\n", ppp->ses.username);
++	log_ppp_info1("<%s>: authentication succeeded\n", ppp->ses.username);
+ 	triton_event_fire(EV_SES_AUTHORIZED, &ppp->ses);
+ }
+ 
+@@ -336,10 +336,10 @@ int __export ppp_auth_succeeded(struct ppp_t *ppp, char *username)
+ {
+ 	struct auth_layer_data_t *ad = container_of(ppp_find_layer_data(ppp, &auth_layer), typeof(*ad), ld);
+ 
+-	if (ap_session_check_single(username))
++	if (ap_session_set_username(&ppp->ses, username)) {
++		_free(username);
+ 		return -1;
+-
+-	ppp->ses.username = username;
++	}
+ 
+ 	triton_context_call(ppp->ses.ctrl->ctx, (triton_event_func)__ppp_auth_started, ppp);
+ 
+@@ -352,9 +352,10 @@ void __export ppp_auth_failed(struct ppp_t *ppp, char *username)
+ 		pthread_rwlock_wrlock(&ses_lock);
+ 		if (!ppp->ses.username)
+ 			ppp->ses.username = _strdup(username);
++		ppp->ses.terminate_cause = TERM_AUTH_ERROR;
+ 		pthread_rwlock_unlock(&ses_lock);
+-		log_ppp_info1("%s: authentication failed\n", username);
+-		log_info1("%s: authentication failed\n", username);
++		log_ppp_info1("<%s>: authentication failed\n", username);
++		log_info1("<%s>: authentication failed\n", username);
+ 		triton_event_fire(EV_SES_AUTH_FAILED, ppp);
+ 	} else
+ 		log_ppp_info1("authentication failed\n");
+diff --git a/accel-pppd/radius/acct.c b/accel-pppd/radius/acct.c
+index 161b959..9a5e549 100644
+--- a/accel-pppd/radius/acct.c
++++ b/accel-pppd/radius/acct.c
+@@ -36,12 +36,12 @@ static int req_set_RA(struct rad_req_t *req, const char *secret)
+ 	return 0;
+ }
+ 
+-static void req_set_stat(struct rad_req_t *req, struct ap_session *ses)
++static int req_set_stat(struct rad_req_t *req, struct ap_session *ses)
+ {
+ 	struct rtnl_link_stats stats;
+ 	struct radius_pd_t *rpd = req->rpd;
+-
+ 	time_t stop_time;
++	int ret = 0;
+ 	
+ 	if (ses->stop_time)
+ 		stop_time = ses->stop_time;
+@@ -55,9 +55,12 @@ static void req_set_stat(struct rad_req_t *req, struct ap_session *ses)
+ 		rad_packet_change_int(req->pack, NULL, "Acct-Output-Packets", stats.tx_packets);
+ 		rad_packet_change_int(req->pack, NULL, "Acct-Input-Gigawords", rpd->ses->acct_input_gigawords);
+ 		rad_packet_change_int(req->pack, NULL, "Acct-Output-Gigawords", rpd->ses->acct_output_gigawords);
+-	}
++	} else
++		ret = -1;
+ 
+ 	rad_packet_change_int(req->pack, NULL, "Acct-Session-Time", stop_time - ses->start_time);
++
++	return ret;
+ }
+ 
+ static int rad_acct_read(struct triton_md_handler_t *h)
+@@ -93,6 +96,11 @@ static int rad_acct_read(struct triton_md_handler_t *h)
+ 	if (!req->reply)
+ 		return 0;
+ 
++	if (req->reply->id != req->pack->id)
++		return 0;
++
++	rad_server_req_exit(req);
++
+ 	dt = (req->reply->tv.tv_sec - req->pack->tv.tv_sec) * 1000 + 
+ 		(req->reply->tv.tv_nsec - req->pack->tv.tv_nsec) / 1000000;
+ 
+@@ -107,47 +115,52 @@ static int rad_acct_read(struct triton_md_handler_t *h)
+ 			triton_timer_del(&req->timeout);
+ 	}
+ 
+-	return 0;
++	triton_md_unregister_handler(h, 1);
++
++	return 1;
+ }
+ 
+-static void __rad_req_send(struct rad_req_t *req)
++static int __rad_req_send(struct rad_req_t *req)
+ {
+ 	while (1) {
+ 		if (rad_server_req_enter(req)) {
+-			if (rad_server_realloc(req)) {
+-				if (conf_acct_timeout) {
+-					log_ppp_warn("radius:acct: no servers available, terminating session...\n");
+-					ap_session_terminate(req->rpd->ses, TERM_NAS_ERROR, 0);
+-				}
+-				break;
+-			}
++			if (rad_server_realloc(req))
++				return -1;
++			continue;
++		}
++
++		if (rad_req_send(req, conf_interim_verbose ? log_ppp_info2 : NULL)) {
++			rad_server_req_exit(req);
++			rad_server_fail(req->serv);
+ 			continue;
+ 		}
+ 
+-		rad_req_send(req, conf_interim_verbose ? log_ppp_info2 : NULL);
+ 		if (!req->hnd.tpd) {
+ 			triton_md_register_handler(req->rpd->ses->ctrl->ctx, &req->hnd);
+ 			triton_md_enable_handler(&req->hnd, MD_MODE_READ);
+ 		}
+ 
+-		rad_server_req_exit(req);
+-
+ 		break;
+ 	}
++
++	return 0;
+ }
+ 
+ static void rad_acct_timeout(struct triton_timer_t *t)
+ {
+ 	struct rad_req_t *req = container_of(t, typeof(*req), timeout);
+ 	time_t ts, dt;
++			
++	rad_server_req_exit(req);
++	rad_server_timeout(req->serv);
+ 
+ 	__sync_add_and_fetch(&req->serv->stat_interim_lost, 1);
+ 	stat_accm_add(req->serv->stat_interim_lost_1m, 1);
+ 	stat_accm_add(req->serv->stat_interim_lost_5m, 1);
+ 
+ 	if (conf_acct_timeout == 0) {
+-		rad_server_timeout(req->serv);
+ 		triton_timer_del(t);
++		triton_md_unregister_handler(&req->hnd, 1);
+ 		return;
+ 	}
+ 
+@@ -159,11 +172,13 @@ static void rad_acct_timeout(struct triton_timer_t *t)
+ 		rad_server_fail(req->serv);
+ 		if (rad_server_realloc(req)) {
+ 			log_ppp_warn("radius:acct: no servers available, terminating session...\n");
++			triton_timer_del(t);
+ 			ap_session_terminate(req->rpd->ses, TERM_NAS_ERROR, 0);
+ 			return;
+ 		}
+ 		time(&req->rpd->acct_timestamp);
+ 	}
++
+ 	if (dt > conf_acct_timeout / 2) {
+ 		req->timeout.period += 1000;
+ 		triton_timer_mod(&req->timeout, 0);
+@@ -180,7 +195,16 @@ static void rad_acct_timeout(struct triton_timer_t *t)
+ 		req_set_RA(req, req->serv->secret);
+ 	}
+ 
+-	__rad_req_send(req);
++	if (__rad_req_send(req)) {
++		triton_timer_del(t);
++
++		if (conf_acct_timeout) {
++			log_ppp_warn("radius:acct: no servers available, terminating session...\n");
++			ap_session_terminate(req->rpd->ses, TERM_NAS_ERROR, 0);
++		}
++
++		return;
++	}
+ 
+ 	__sync_add_and_fetch(&req->serv->stat_interim_sent, 1);
+ }
+@@ -196,7 +220,11 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
+ 			rpd->session_timeout.expire_tv.tv_sec - (time(NULL) - rpd->ses->start_time) < INTERIM_SAFE_TIME)
+ 			return;
+ 
+-	req_set_stat(rpd->acct_req, rpd->ses);
++	if (req_set_stat(rpd->acct_req, rpd->ses)) {
++		ap_session_terminate(rpd->ses, TERM_LOST_CARRIER, 0);
++		return;
++	}
++
+ 	if (!rpd->acct_interim_interval)
+ 		return;
+ 
+@@ -208,7 +236,9 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
+ 		rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", 0);
+ 	req_set_RA(rpd->acct_req, rpd->acct_req->serv->secret);
+ 
+-	__rad_req_send(rpd->acct_req);
++	if (__rad_req_send(rpd->acct_req))
++		return;
++
+ 	/* The above call may set rpd->acct_req to NULL in the following chain of events:
+ 	   1. __rad_req_send fails (on rad_server_realloc) and calls ppp_terminate;
+ 	   2. As a result, an EV_PPP_FINISHING event is fired;
+@@ -330,23 +360,18 @@ out:
+ #ifdef USE_BACKUP
+ 	}
+ #endif
++	close(rpd->acct_req->hnd.fd);
++	rpd->acct_req->hnd.fd = -1;
+ 
+ 	rpd->acct_req->hnd.read = rad_acct_read;
+ 
+-	triton_md_register_handler(rpd->ses->ctrl->ctx, &rpd->acct_req->hnd);
+-	if (triton_md_enable_handler(&rpd->acct_req->hnd, MD_MODE_READ))
+-		goto out_err;
+-	
+ 	rpd->acct_req->timeout.expire = rad_acct_timeout;
+ 	rpd->acct_req->timeout.period = conf_timeout * 1000;
+-	
++
+ 	rpd->acct_interim_timer.expire = rad_acct_interim_update;
+ 	rpd->acct_interim_timer.period = rpd->acct_interim_interval ? rpd->acct_interim_interval * 1000 : STAT_UPDATE_INTERVAL;
+-	if (rpd->acct_interim_interval && triton_timer_add(rpd->ses->ctrl->ctx, &rpd->acct_interim_timer, 0)) {
+-		triton_md_unregister_handler(&rpd->acct_req->hnd);
+-		triton_timer_del(&rpd->acct_req->timeout);
+-		goto out_err;
+-	}
++	if (rpd->acct_interim_interval)
++		triton_timer_add(rpd->ses->ctrl->ctx, &rpd->acct_interim_timer, 0);
+ 	return 0;
+ 
+ out_err:
+@@ -367,8 +392,12 @@ void rad_acct_stop(struct radius_pd_t *rpd)
+ 	if (rpd->acct_interim_timer.tpd)
+ 		triton_timer_del(&rpd->acct_interim_timer);
+ 
+-	if (rpd->acct_req) {
+-		triton_md_unregister_handler(&rpd->acct_req->hnd);
++	if (rpd->acct_req->timeout.tpd)
++		rad_server_req_exit(rpd->acct_req);
++
++		if (rpd->acct_req->hnd.tpd)
++			triton_md_unregister_handler(&rpd->acct_req->hnd, 0);
++	
+ 		if (rpd->acct_req->timeout.tpd)
+ 			triton_timer_del(&rpd->acct_req->timeout);
+ 
+@@ -475,6 +504,5 @@ out:
+ 
+ 		rad_req_free(rpd->acct_req);
+ 		rpd->acct_req = NULL;
+-	}
+ }
+ 
+diff --git a/accel-pppd/radius/auth.c b/accel-pppd/radius/auth.c
+index 0efe1c6..f4efe3b 100644
+--- a/accel-pppd/radius/auth.c
++++ b/accel-pppd/radius/auth.c
+@@ -324,7 +324,6 @@ int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list arg
+ 		rpd->auth_req->pack->id++;
+ 	}
+ 
+-	return r;
+ out:
+ 	rad_req_free(rpd->auth_req);
+ 	rpd->auth_req = NULL;
+@@ -444,11 +443,13 @@ int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list ar
+ 		rpd->auth_req->pack->id++;
+ 	} else if (rpd->auth_req->reply) {
+ 		ra = rad_packet_find_attr(rpd->auth_req->reply, "Microsoft", "MS-CHAP-Error");
+-		if (ra)
+-			*mschap_error = ra->val.string;
++		if (ra) {
++			*mschap_error = _malloc(ra->len + 1);
++			memcpy(*mschap_error, ra->val.string, ra->len);
++			(*mschap_error)[ra->len] = 0;
++		}
+ 	}
+ 
+-	return r;
+ out:
+ 	rad_req_free(rpd->auth_req);
+ 	rpd->auth_req = NULL;
+@@ -533,16 +534,19 @@ int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list ar
+ 		rpd->auth_req->pack->id++;
+ 	} else if (rpd->auth_req->reply) {
+ 		ra = rad_packet_find_attr(rpd->auth_req->reply, "Microsoft", "MS-CHAP-Error");
+-		if (ra)
+-			*mschap_error = ra->val.string;
++		if (ra) {
++			*mschap_error = _malloc(ra->len + 1);
++			memcpy(*mschap_error, ra->val.string, ra->len);
++			(*mschap_error)[ra->len] = 0;
++		}
+ 		ra = rad_packet_find_attr(rpd->auth_req->reply, NULL, "Reply-Message");
+-		if (ra)
+-			*reply_msg = ra->val.string;
++		if (ra) {
++			*reply_msg = _malloc(ra->len + 1);
++			memcpy(*reply_msg, ra->val.string, ra->len);
++			(*reply_msg)[ra->len] = 0;
++		}
+ 	}
+ 
+-
+-
+-	return r;
+ out:
+ 	rad_req_free(rpd->auth_req);
+ 	rpd->auth_req = NULL;
+diff --git a/accel-pppd/radius/dm_coa.c b/accel-pppd/radius/dm_coa.c
+index 13719ae..0235ba4 100644
+--- a/accel-pppd/radius/dm_coa.c
++++ b/accel-pppd/radius/dm_coa.c
+@@ -268,8 +268,7 @@ static int dm_coa_read(struct triton_md_handler_t *h)
+ static void dm_coa_close(struct triton_context_t *ctx)
+ {
+ 	struct dm_coa_serv_t *serv = container_of(ctx, typeof(*serv), ctx);
+-	triton_md_unregister_handler(&serv->hnd);
+-	close(serv->hnd.fd);
++	triton_md_unregister_handler(&serv->hnd, 1);
+ 	triton_context_unregister(ctx);
+ }
+ 
+diff --git a/accel-pppd/radius/packet.c b/accel-pppd/radius/packet.c
+index ace9f6e..5bff60a 100644
+--- a/accel-pppd/radius/packet.c
++++ b/accel-pppd/radius/packet.c
+@@ -284,6 +284,7 @@ void rad_packet_print(struct rad_packet_t *pack, struct rad_server_t *s, void (*
+ 		uint64_t ifid;
+ 		uint16_t u16[4];
+ 	} ifid_u;
++	in_addr_t addr;
+ 	
+ 	if (s)
+ 		print("[RADIUS(%i) ", s->id);
+@@ -348,7 +349,8 @@ void rad_packet_print(struct rad_packet_t *pack, struct rad_server_t *s, void (*
+ 				print("\"%s\"", attr->val.string);
+ 				break;
+ 			case ATTR_TYPE_IPADDR:
+-				print("%i.%i.%i.%i", attr->val.ipaddr & 0xff, (attr->val.ipaddr >> 8) & 0xff, (attr->val.ipaddr >> 16) & 0xff, (attr->val.ipaddr >> 24) & 0xff);
++				addr = ntohl(attr->val.ipaddr);
++				print("%i.%i.%i.%i", (addr >> 24) & 0xff, (addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff);
+ 				break;
+ 			case ATTR_TYPE_IFID:
+ 				ifid_u.ifid = attr->val.ifid;
+diff --git a/accel-pppd/radius/radius.c b/accel-pppd/radius/radius.c
+index 3d20683..a3b211e 100644
+--- a/accel-pppd/radius/radius.c
++++ b/accel-pppd/radius/radius.c
+@@ -45,6 +45,8 @@ int conf_req_limit;
+ static const char *conf_default_realm;
+ static int conf_default_realm_len;
+ 
++const char *conf_attr_tunnel_type;
++
+ static LIST_HEAD(sessions);
+ static pthread_rwlock_t sessions_lock = PTHREAD_RWLOCK_INITIALIZER;
+ 
+@@ -142,11 +144,15 @@ int rad_proc_attrs(struct rad_req_t *req)
+ 				a->addr = attr->val.ipv6prefix.prefix;
+ 				list_add_tail(&a->entry, &req->rpd->ipv6_dp.prefix_list);
+ 				break;
++			case NAS_Port_Id:
++				ap_session_rename(req->rpd->ses, attr->val.string, attr->len);
++				break;
+ 		}
+ 	}
+ 
+ 	if (dns.ses)
+ 		triton_event_fire(EV_DNS, &dns);
++
+ 	if (wins.ses)
+ 		triton_event_fire(EV_WINS, &wins);
+ 
+@@ -401,7 +407,7 @@ struct radius_pd_t *find_pd(struct ap_session *ses)
+ }
+ 
+ 
+-struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, int port_id, in_addr_t ipaddr, const char *csid)
++struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, const char *port_id, int port, in_addr_t ipaddr, const char *csid)
+ {
+ 	struct radius_pd_t *rpd;
+ 	
+@@ -413,7 +419,9 @@ struct radius_pd_t *rad_find_session(const char *sessionid, const char *username
+ 			continue;
+ 		if (username && strcmp(username, rpd->ses->username))
+ 			continue;
+-		if (port_id >= 0 && port_id != rpd->ses->unit_idx)
++		if (port >= 0 && port != rpd->ses->unit_idx)
++			continue;
++		if (port_id && strcmp(port_id, rpd->ses->ifname))
+ 			continue;
+ 		if (ipaddr && rpd->ses->ipv4 && ipaddr != rpd->ses->ipv4->peer_addr)
+ 			continue;
+@@ -433,7 +441,8 @@ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
+ 	const char *sessionid = NULL;
+ 	const char *username = NULL;
+ 	const char *csid = NULL;
+-	int port_id = -1;
++	int port = -1;
++	const char *port_id = NULL;
+ 	in_addr_t ipaddr = 0;
+ 	
+ 	list_for_each_entry(attr, &pack->attrs, entry) {
+@@ -447,7 +456,10 @@ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
+ 				username = attr->val.string;
+ 				break;
+ 			case NAS_Port:
+-				port_id = attr->val.integer;
++				port = attr->val.integer;
++				break;
++			case NAS_Port_Id:
++				port_id = attr->val.string;
+ 				break;
+ 			case Framed_IP_Address:
+ 				ipaddr = attr->val.ipaddr;
+@@ -458,13 +470,13 @@ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
+ 		}
+ 	}
+ 
+-	if (!sessionid && !username && port_id == -1 && ipaddr == 0 && !csid)
++	if (!sessionid && !username && !port_id && port == -1 && ipaddr == 0 && !csid)
+ 		return NULL;
+ 
+-	if (username && !sessionid && port_id == -1 && ipaddr == 0)
++	if (username && !sessionid && port == -1 && ipaddr == 0 && !port_id)
+ 		return NULL;
+ 	
+-	return rad_find_session(sessionid, username, port_id, ipaddr, csid);
++	return rad_find_session(sessionid, username, port_id, port, ipaddr, csid);
+ }
+ 
+ int rad_check_nas_pack(struct rad_packet_t *pack)
+@@ -622,6 +634,8 @@ static int load_config(void)
+ 	if (opt)
+ 		conf_req_limit = atoi(opt);
+ 	
++	conf_attr_tunnel_type = conf_get_opt("radius", "attr-tunnel-type");
++	
+ 	conf_default_realm = conf_get_opt("radius", "default-realm");
+ 	if (conf_default_realm)
+ 		conf_default_realm_len = strlen(conf_default_realm);
+diff --git a/accel-pppd/radius/radius_p.h b/accel-pppd/radius/radius_p.h
+index 29a971f..8ad69da 100644
+--- a/accel-pppd/radius/radius_p.h
++++ b/accel-pppd/radius/radius_p.h
+@@ -82,6 +82,7 @@ struct rad_server_t {
+ 	time_t fail_time;
+ 	int conf_fail_time;
+ 	int timeout_cnt;
++	double weight;
+ 	pthread_mutex_t lock;
+ 
+ 	unsigned long stat_auth_sent;
+@@ -107,6 +108,7 @@ struct rad_server_t {
+ 	struct stat_accm_t *stat_interim_query_1m;
+ 	struct stat_accm_t *stat_interim_query_5m;
+ 
++	int backup:1;
+ 	int starting:1;
+ 	int acct_on:1;
+ 	int need_free:1;
+@@ -136,9 +138,10 @@ extern int conf_acct_interim_interval;
+ extern int conf_accounting;
+ extern int conf_fail_time;
+ extern int conf_req_limit;
++extern const char *conf_attr_tunnel_type;
+ 
+ int rad_check_nas_pack(struct rad_packet_t *pack);
+-struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, int port_id, in_addr_t ipaddr, const char *csid);
++struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, const char *port_id, int port, in_addr_t ipaddr, const char *csid);
+ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack);
+ 
+ int rad_dict_load(const char *fname);
+diff --git a/accel-pppd/radius/req.c b/accel-pppd/radius/req.c
+index 70e0431..27a33f2 100644
+--- a/accel-pppd/radius/req.c
++++ b/accel-pppd/radius/req.c
+@@ -81,6 +81,9 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
+ 	if (rad_packet_add_int(req->pack, NULL, "NAS-Port", rpd->ses->unit_idx))
+ 		goto out_err;
+ 	
++	if (rad_packet_add_str(req->pack, NULL, "NAS-Port-Id", rpd->ses->ifname))
++		goto out_err;
++	
+ 	if (req->rpd->ses->ctrl->type == CTRL_TYPE_IPOE) {
+ 		if (rad_packet_add_val(req->pack, NULL, "NAS-Port-Type", "Ethernet"))
+ 			goto out_err;
+@@ -106,6 +109,10 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
+ 	if (rpd->attr_class)
+ 		if (rad_packet_add_octets(req->pack, NULL, "Class", rpd->attr_class, rpd->attr_class_len))
+ 			goto out_err;
++	
++	if (conf_attr_tunnel_type)
++		if (rad_packet_add_str(req->pack, NULL, conf_attr_tunnel_type, rpd->ses->ctrl->name))
++			goto out_err;
+ 
+ 	list_for_each_entry(plugin, &req->rpd->plugin_list, entry) {
+ 		switch (code) {
+@@ -254,8 +261,12 @@ static int make_socket(struct rad_req_t *req)
+ 	return 0;
+ 
+ out_err:
+-	close(req->hnd.fd);
+-	req->hnd.fd = -1;
++	if (req->hnd.tpd)
++		triton_md_unregister_handler(&req->hnd, 1);
++	else {
++		close(req->hnd.fd);
++		req->hnd.fd = -1;
++	}
+ 	return -1;
+ }
+ 
+@@ -287,7 +298,7 @@ static void req_wakeup(struct rad_req_t *req)
+ 	struct triton_context_t *ctx = req->wait_ctx;
+ 	if (req->timeout.tpd)
+ 		triton_timer_del(&req->timeout);
+-	triton_md_unregister_handler(&req->hnd);
++	triton_md_unregister_handler(&req->hnd, 0);
+ 	triton_context_unregister(&req->ctx);
+ 	triton_context_wakeup(ctx);
+ }
+diff --git a/accel-pppd/radius/serv.c b/accel-pppd/radius/serv.c
+index c7b1916..0910314 100644
+--- a/accel-pppd/radius/serv.c
++++ b/accel-pppd/radius/serv.c
+@@ -6,6 +6,7 @@
+ #include <unistd.h>
+ #include <sched.h>
+ #include <time.h>
++#include <assert.h>
+ #include <sys/socket.h>
+ #include <netinet/in.h>
+ #include <arpa/inet.h>
+@@ -63,7 +64,7 @@ static struct rad_server_t *__rad_server_get(int type, struct rad_server_t *excl
+ 			continue;
+ 		}
+ 
+-		if (s->client_cnt[type] < s0->client_cnt[type])
++		if (s0->backup || s->weight*s->client_cnt[type] < s0->weight*s0->client_cnt[type])
+ 			s0 = s;
+ 	}
+ 
+@@ -137,6 +138,7 @@ int rad_server_req_enter(struct rad_req_t *req)
+ 	}
+ 
+ 	req->serv->req_cnt++;
++	log_ppp_debug("radius(%i): req_enter %i\n", req->serv->id, req->serv->req_cnt);
+ 	pthread_mutex_unlock(&req->serv->lock);
+ 
+ 	return 0;
+@@ -151,6 +153,8 @@ void rad_server_req_exit(struct rad_req_t *req)
+ 
+ 	pthread_mutex_lock(&req->serv->lock);
+ 	req->serv->req_cnt--;
++	log_ppp_debug("radius(%i): req_exit %i\n", req->serv->id, req->serv->req_cnt);
++	assert(req->serv->req_cnt >= 0);
+ 	if (req->serv->req_cnt < req->serv->req_limit && !list_empty(&req->serv->req_queue)) {
+ 		r = list_entry(req->serv->req_queue.next, typeof(*r), entry);
+ 		list_del(&r->entry);
+@@ -175,9 +179,11 @@ int rad_server_realloc(struct rad_req_t *req)
+ 
+ 	if (req->hnd.fd != -1) {
+ 		if (req->hnd.tpd)
+-			triton_md_unregister_handler(&req->hnd);
+-		close(req->hnd.fd);
+-		req->hnd.fd = -1;
++			triton_md_unregister_handler(&req->hnd, 1);
++		else {
++			close(req->hnd.fd);
++			req->hnd.fd = -1;
++		}
+ 	}
+ 
+ 	req->server_addr = req->serv->addr;
+@@ -198,8 +204,8 @@ void rad_server_fail(struct rad_server_t *s)
+ 
+ 	pthread_mutex_lock(&s->lock);
+ 
+-	if (ts.tv_sec > s->fail_time) {
+-		s->fail_time = ts.tv_sec + s->conf_fail_time;
++	if (ts.tv_sec >= s->fail_time) {
++		s->fail_time = ts.tv_sec + s->conf_fail_time + 1;
+ 		log_ppp_warn("radius: server(%i) not responding\n", s->id);
+ 		log_warn("radius: server(%i) not responding\n", s->id);
+ 	}
+@@ -646,6 +652,18 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
+ 			goto out;
+ 	} else
+ 		s->conf_fail_time = conf_fail_time;
++	
++	ptr3 = strstr(ptr2, ",weight=");
++	if (ptr3)
++		s->weight = 1.0/atoi(ptr3 + 8);
++	else
++		s->weight = 1;
++	
++	ptr3 = strstr(ptr2, ",backup");
++	if (ptr3)
++		s->backup = 1;
++	else
++		s->backup = 0;
+ 
+ 	if (ptr2)
+ 		*ptr2 = 0;
+diff --git a/accel-pppd/session.c b/accel-pppd/session.c
+index c74de57..ac8633e 100644
+--- a/accel-pppd/session.c
++++ b/accel-pppd/session.c
+@@ -43,7 +43,7 @@ int __export urandom_fd;
+ int __export ap_shutdown;
+ 
+ #if __WORDSIZE == 32
+-static spinlock_t seq_lock = SPINLOCK_INITIALIZER;
++static spinlock_t seq_lock;
+ #endif
+ static long long unsigned seq;
+ static struct timespec seq_ts;
+@@ -159,6 +159,9 @@ void __export ap_session_finished(struct ap_session *ses)
+ 	triton_event_fire(EV_SES_FINISHED, ses);
+ 	ses->ctrl->finished(ses);
+ 
++	if (ses->wakeup)
++		triton_context_wakeup(ses->wakeup);
++
+ 	if (ses->username) {
+ 		_free(ses->username);
+ 		ses->username = NULL;
+@@ -173,6 +176,11 @@ void __export ap_session_finished(struct ap_session *ses)
+ 		_free(ses->ipv6_pool_name);
+ 		ses->ipv6_pool_name = NULL;
+ 	}
++	
++	if (ses->ifname_rename) {
++		_free(ses->ifname_rename);
++		ses->ifname_rename = NULL;
++	}
+ 
+ #ifdef USE_BACKUP
+ 	if (ses->backup)
+@@ -310,28 +318,39 @@ static void __terminate_sec(struct ap_session *ses)
+ 	ap_session_terminate(ses, TERM_NAS_REQUEST, 0);
+ }
+ 
+-int __export ap_session_check_single(const char *username)
++int __export ap_session_set_username(struct ap_session *s, char *username)
+ {
+ 	struct ap_session *ses;
++	int wait = 0;
+ 
++	pthread_rwlock_wrlock(&ses_lock);
+ 	if (conf_single_session >= 0) {
+-		pthread_rwlock_rdlock(&ses_lock);
+ 		list_for_each_entry(ses, &ses_list, entry) {
+-			if (ses->username && !strcmp(ses->username, username)) {
++			if (ses->username && ses->terminate_cause != TERM_AUTH_ERROR && !strcmp(ses->username, username)) {
+ 				if (conf_single_session == 0) {
+ 					pthread_rwlock_unlock(&ses_lock);
+ 					log_ppp_info1("%s: second session denied\n", username);
+ 					return -1;
+ 				} else {
+ 					if (conf_single_session == 1) {
+-						ap_session_ifdown(ses);
++						if (ses->wakeup)
++							continue;
++						//ap_session_ifdown(ses);
++						ses->wakeup = s->ctrl->ctx;
++						wait = 1;
+ 						triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate_sec, ses);
+ 					}
+ 				}
++				break;
+ 			}
+ 		}
+-		pthread_rwlock_unlock(&ses_lock);
+-	}
++		s->username = username;
++	} else
++		s->username = username;
++	pthread_rwlock_unlock(&ses_lock);
++
++	if (wait)
++		triton_context_schedule();
+ 
+ 	return 0;
+ }
+@@ -401,6 +420,10 @@ static void init(void)
+ {
+ 	FILE *f;
+ 
++#if __WORDSIZE == 32
++	spinlock_init(&seq_lock);
++#endif
++
+ 	sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
+ 	if (sock_fd < 0) {
+ 		perror("socket");
+diff --git a/accel-pppd/shaper/shaper.c b/accel-pppd/shaper/shaper.c
+index 9594caf..c27ec72 100644
+--- a/accel-pppd/shaper/shaper.c
++++ b/accel-pppd/shaper/shaper.c
+@@ -237,7 +237,7 @@ static void parse_attr(struct rad_attr_t *attr, int dir, int *speed, int *burst,
+ 	if (attr->attr->type == ATTR_TYPE_STRING)
+ 		parse_string(attr->val.string, dir, speed, burst, tr_id);
+ 	else if (attr->attr->type == ATTR_TYPE_INTEGER)
+-		*speed = attr->val.integer;
++		*speed = conf_multiplier * attr->val.integer;
+ }
+ 
+ static void check_radius_attrs(struct shaper_pd_t *pd, struct rad_packet_t *pack)
+diff --git a/accel-pppd/triton/md.c b/accel-pppd/triton/md.c
+index c9ec32e..1396d3e 100644
+--- a/accel-pppd/triton/md.c
++++ b/accel-pppd/triton/md.c
+@@ -96,19 +96,16 @@ static void *md_thread(void *arg)
+ 			if (r)
+ 				triton_thread_wakeup(h->ctx->thread);
+ 		}
+-
++		
+ 		while (!list_empty(&freed_list2)) {
+ 			h = list_entry(freed_list2.next, typeof(*h), entry);
+ 			list_del(&h->entry);
++			triton_context_release(h->ctx);
+ 			mempool_free(h);
+ 		}
+-		
++
+ 		pthread_mutex_lock(&freed_list_lock);
+-		while (!list_empty(&freed_list)) {
+-			h = list_entry(freed_list.next, typeof(*h), entry);
+-			list_del(&h->entry);
+-			list_add(&h->entry, &freed_list2);
+-		}
++		list_splice_init(&freed_list, &freed_list2);
+ 		pthread_mutex_unlock(&freed_list_lock);
+ 	}
+ 
+@@ -125,17 +122,25 @@ void __export triton_md_register_handler(struct triton_context_t *ctx, struct tr
+ 		h->ctx = (struct _triton_context_t *)ctx->tpd;
+ 	else
+ 		h->ctx = (struct _triton_context_t *)default_ctx.tpd;
++	__sync_add_and_fetch(&h->ctx->refs, 1);
+ 	ud->tpd = h;
+ 	spin_lock(&h->ctx->lock);
+ 	list_add_tail(&h->entry, &h->ctx->handlers);
+ 	spin_unlock(&h->ctx->lock);
+ 
+-	triton_stat.md_handler_count++;
++	__sync_add_and_fetch(&triton_stat.md_handler_count, 1);
+ }
+-void __export triton_md_unregister_handler(struct triton_md_handler_t *ud)
++
++void __export triton_md_unregister_handler(struct triton_md_handler_t *ud, int c)
+ {
+ 	struct _triton_md_handler_t *h = (struct _triton_md_handler_t *)ud->tpd;
++
+ 	triton_md_disable_handler(ud, MD_MODE_READ | MD_MODE_WRITE);
++
++	if (c) {
++		close(ud->fd);
++		ud->fd = -1;
++	}
+ 	
+ 	spin_lock(&h->ctx->lock);
+ 	h->ud = NULL;
+@@ -146,16 +151,15 @@ void __export triton_md_unregister_handler(struct triton_md_handler_t *ud)
+ 	}
+ 	spin_unlock(&h->ctx->lock);
+ 
+-	sched_yield();
+-
+ 	pthread_mutex_lock(&freed_list_lock);
+ 	list_add_tail(&h->entry, &freed_list);
+ 	pthread_mutex_unlock(&freed_list_lock);
+ 
+ 	ud->tpd = NULL;
+ 
+-	triton_stat.md_handler_count--;
++	__sync_sub_and_fetch(&triton_stat.md_handler_count, 1);
+ }
++
+ int __export triton_md_enable_handler(struct triton_md_handler_t *ud, int mode)
+ {
+ 	struct _triton_md_handler_t *h = (struct _triton_md_handler_t *)ud->tpd;
+@@ -170,6 +174,9 @@ int __export triton_md_enable_handler(struct triton_md_handler_t *ud, int mode)
+ 	if (!h->trig_level)
+ 		h->epoll_event.events |= EPOLLET;
+ 	
++	if (events == h->epoll_event.events)
++		return 0;
++	
+ 	if (events)
+ 		r = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, h->ud->fd, &h->epoll_event);
+ 	else
+@@ -182,18 +189,23 @@ int __export triton_md_enable_handler(struct triton_md_handler_t *ud, int mode)
+ 
+ 	return r;
+ }
++
+ int __export triton_md_disable_handler(struct triton_md_handler_t *ud,int mode)
+ {
+ 	struct _triton_md_handler_t *h = (struct _triton_md_handler_t *)ud->tpd;
+-	int r=0;
++	int r = 0;
++	int events = h->epoll_event.events;
+ 
+ 	if (!h->epoll_event.events)
+-		return -1;
++		return 0;
+ 	
+ 	if (mode & MD_MODE_READ)
+ 		h->epoll_event.events &= ~EPOLLIN;
+ 	if (mode & MD_MODE_WRITE)
+ 		h->epoll_event.events &= ~EPOLLOUT;
++	
++	if (events == h->epoll_event.events)
++		return 0;
+ 
+ 	if (h->epoll_event.events & (EPOLLIN | EPOLLOUT))
+ 		r = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, h->ud->fd, &h->epoll_event);
+diff --git a/accel-pppd/triton/mempool.c b/accel-pppd/triton/mempool.c
+index 1ee00f3..4a3ec8b 100644
+--- a/accel-pppd/triton/mempool.c
++++ b/accel-pppd/triton/mempool.c
+@@ -53,8 +53,8 @@ struct _item_t
+ };
+ 
+ static LIST_HEAD(pools);
+-static spinlock_t pools_lock = SPINLOCK_INITIALIZER;
+-static spinlock_t mmap_lock = SPINLOCK_INITIALIZER;
++static spinlock_t pools_lock;
++static spinlock_t mmap_lock;
+ static void *mmap_ptr;
+ static void *mmap_endptr;
+ 
+@@ -343,7 +343,10 @@ static void __init init(void)
+ {
+ 	sigset_t set;
+ 	sigfillset(&set);
+-	
++
++	spinlock_init(&pools_lock);
++	spinlock_init(&mmap_lock);
++
+ 	struct sigaction sa = {
+ 		.sa_handler = sigclean,
+ 		.sa_mask = set,
+diff --git a/accel-pppd/triton/spinlock.h b/accel-pppd/triton/spinlock.h
+index b09d827..529719e 100644
+--- a/accel-pppd/triton/spinlock.h
++++ b/accel-pppd/triton/spinlock.h
+@@ -1,26 +1,7 @@
+ #ifndef __TRITON_SPINLOCK_H
+ #define __TRITON_SPINLOCK_H
+ 
+-#if defined(FUTEX_SPINLOCK)
+-
+-/*#include <unistd.h>
+-#include <sys/syscall.h>
+-#include <linux/futex.h>
+-typedef volatile int __attribute__((aligned)) spinlock_t;
+-static inline void _spin_lock(spinlock_t *l)
+-{
+-			syscall(SYS_futex, l, FUTEX_WAIT, r, NULL, NULL, 0);
+-}
+-static inline void _spin_unlock(spinlock_t *l)
+-{
+-		syscall(SYS_futex, l, FUTEX_WAKE, 2, NULL, NULL, 0);
+-}
+-#define spin_lock(l) _spin_lock(l)
+-#define spin_unlock(l) _spin_unlock(l)
+-#define SPINLOCK_INITIALIZER 1
+-#define spinlock_init(l) {*(l)=1;}*/
+-
+-#elif defined(GCC_SPINLOCK)
++#if defined(GCC_SPINLOCK)
+ 
+ typedef volatile int __attribute__((aligned)) spinlock_t;
+ #define spin_lock(l) {while(__sync_lock_test_and_set(l,1));}
+@@ -34,7 +15,6 @@ typedef volatile int __attribute__((aligned)) spinlock_t;
+ typedef pthread_spinlock_t spinlock_t;
+ #define spin_lock(l) pthread_spin_lock(l)
+ #define spin_unlock(l) pthread_spin_unlock(l)
+-#define SPINLOCK_INITIALIZER 1
+ #define spinlock_init(l) pthread_spin_init(l, 0)
+ #endif
+ 
+diff --git a/accel-pppd/triton/timer.c b/accel-pppd/triton/timer.c
+index e5ebeb5..d0ebcb4 100644
+--- a/accel-pppd/triton/timer.c
++++ b/accel-pppd/triton/timer.c
+@@ -107,15 +107,12 @@ void *timer_thread(void *arg)
+ 		while (!list_empty(&freed_list2)) {
+ 			t = list_entry(freed_list2.next, typeof(*t), entry);
+ 			list_del(&t->entry);
++			triton_context_release(t->ctx);
+ 			mempool_free(t);
+ 		}
+ 
+ 		pthread_mutex_lock(&freed_list_lock);
+-		while (!list_empty(&freed_list)) {
+-			t = list_entry(freed_list.next, typeof(*t), entry);
+-			list_del(&t->entry);
+-			list_add(&t->entry, &freed_list2);
+-		}
++		list_splice_init(&freed_list, &freed_list2);
+ 		pthread_mutex_unlock(&freed_list_lock);
+ 	}
+ 
+@@ -147,6 +144,7 @@ int __export triton_timer_add(struct triton_context_t *ctx, struct triton_timer_
+     goto out_err;
+ 	}
+ 	
++	__sync_add_and_fetch(&t->ctx->refs, 1);
+ 	ud->tpd = t;
+ 
+ 	if (triton_timer_mod(ud, abs_time))
+diff --git a/accel-pppd/triton/triton.c b/accel-pppd/triton/triton.c
+index 8bde56d..05cbf21 100644
+--- a/accel-pppd/triton/triton.c
++++ b/accel-pppd/triton/triton.c
+@@ -16,13 +16,13 @@ int thread_count = 2;
+ int thread_count_max = 200;
+ int max_events = 64;
+ 
+-static spinlock_t threads_lock = SPINLOCK_INITIALIZER;
++static spinlock_t threads_lock;
+ static LIST_HEAD(threads);
+ static LIST_HEAD(sleep_threads);
+ 
+ static LIST_HEAD(ctx_queue);
+ 
+-static spinlock_t ctx_list_lock = SPINLOCK_INITIALIZER;
++static spinlock_t ctx_list_lock;
+ static LIST_HEAD(ctx_list);
+ 
+ static LIST_HEAD(init_list);
+@@ -149,28 +149,27 @@ static void* triton_thread(struct _triton_thread_t *thread)
+ 			spin_unlock(&threads_lock);
+ 		}
+ 
+-cont:
+ 		log_debug2("thread %p: ctx=%p %p\n", thread, thread->ctx, thread->ctx ? thread->ctx->thread : NULL);
+ 		this_ctx = thread->ctx->ud;
+ 		if (thread->ctx->ud->before_switch)
+ 			thread->ctx->ud->before_switch(thread->ctx->ud, thread->ctx->bf_arg);
+ 
++cont:
+ 		log_debug2("thread %p: switch to %p\n", thread, thread->ctx);
+ 		ctx_thread(thread->ctx);
+ 		log_debug2("thread %p: switch from %p %p\n", thread, thread->ctx, thread->ctx->thread);
+ 
+-		spin_lock(&thread->ctx->lock);
++		spin_lock(&threads_lock);
+ 		if (thread->ctx->pending) {
+-			spin_unlock(&thread->ctx->lock);
++			spin_unlock(&threads_lock);
+ 			goto cont;
+ 		}
+ 		thread->ctx->thread = NULL;
+-
+-		spin_unlock(&thread->ctx->lock);
++		spin_unlock(&threads_lock);
+ 
+ 		if (thread->ctx->need_free) {
+ 			log_debug2("- context %p removed\n", thread->ctx);
+-			mempool_free(thread->ctx);
++			triton_context_release(thread->ctx);
+ 		}
+ 
+ 		thread->ctx = NULL;
+@@ -183,6 +182,7 @@ static void ctx_thread(struct _triton_context_t *ctx)
+ 	struct _triton_timer_t *t;
+ 	struct _triton_ctx_call_t *call;
+ 	uint64_t tt;
++	int events;
+ 
+ 	log_debug2("ctx %p %p: enter\n", ctx, ctx->thread);
+ 
+@@ -199,23 +199,33 @@ static void ctx_thread(struct _triton_context_t *ctx)
+ 				t->ud->expire(t->ud);
+ 			continue;
+ 		}
++
+ 		if (!list_empty(&ctx->pending_handlers)) {
+ 			h = list_entry(ctx->pending_handlers.next, typeof(*h), entry2);
+ 			list_del(&h->entry2);
+ 			h->pending = 0;
++			events = h->trig_epoll_events;
+ 			spin_unlock(&ctx->lock);
++			
+ 			__sync_sub_and_fetch(&triton_stat.md_handler_pending, 1);
+-			if (h->trig_epoll_events & (EPOLLIN | EPOLLERR | EPOLLHUP))
+-				if (h->ud && h->ud->read)
++			
++			if ((events & (EPOLLIN | EPOLLERR | EPOLLHUP)) && (h->epoll_event.events & EPOLLIN)) {
++				if (h->ud && h->ud->read) {
+ 					if (h->ud->read(h->ud))
+ 						continue;
+-			if (h->trig_epoll_events & (EPOLLOUT | EPOLLERR | EPOLLHUP))
+-				if (h->ud && h->ud->write)
++				}
++			}
++
++			if ((events & (EPOLLOUT | EPOLLERR | EPOLLHUP)) && (h->epoll_event.events & EPOLLOUT)) {
++				if (h->ud && h->ud->write) {
+ 					if (h->ud->write(h->ud))
+ 						continue;
+-			h->trig_epoll_events = 0;
++				}
++			}
++
+ 			continue;
+ 		}
++
+ 		if (!list_empty(&ctx->pending_calls)) {
+ 			call = list_entry(ctx->pending_calls.next, typeof(*call), entry);
+ 			list_del(&call->entry);
+@@ -224,6 +234,7 @@ static void ctx_thread(struct _triton_context_t *ctx)
+ 			mempool_free(call);
+ 			continue;
+ 		}
++
+ 		ctx->pending = 0;
+ 		spin_unlock(&ctx->lock);
+ 		break;	
+@@ -270,11 +281,13 @@ struct _triton_thread_t *create_thread()
+ 
+ int triton_queue_ctx(struct _triton_context_t *ctx)
+ {
++	spin_lock(&threads_lock);
+ 	ctx->pending = 1;
+-	if (ctx->thread || ctx->queued || ctx->init)
++	if (ctx->thread || ctx->queued || ctx->init) {
++		spin_unlock(&threads_lock);
+ 		return 0;
++	}
+ 
+-	spin_lock(&threads_lock);
+ 	if (list_empty(&sleep_threads) || need_config_reload || triton_stat.thread_active > thread_count || 
+ 		(ctx->priority == 0 && triton_stat.thread_count > thread_count_max)) {
+ 		if (ctx->priority)
+@@ -297,6 +310,12 @@ int triton_queue_ctx(struct _triton_context_t *ctx)
+ 	return 1;
+ }
+ 
++void triton_context_release(struct _triton_context_t *ctx)
++{
++	if (__sync_sub_and_fetch(&ctx->refs, 1) == 0)
++		mempool_free(ctx);
++}
++
+ int __export triton_context_register(struct triton_context_t *ud, void *bf_arg)
+ {
+ 	struct _triton_context_t *ctx = mempool_alloc(ctx_pool);
+@@ -309,6 +328,7 @@ int __export triton_context_register(struct triton_context_t *ud, void *bf_arg)
+ 	ctx->ud = ud;
+ 	ctx->bf_arg = bf_arg;
+ 	ctx->init = 1;
++	ctx->refs = 1;
+ 	spinlock_init(&ctx->lock);
+ 	INIT_LIST_HEAD(&ctx->handlers);
+ 	INIT_LIST_HEAD(&ctx->timers);
+@@ -561,6 +581,9 @@ void __export triton_register_init(int order, void (*func)(void))
+ 
+ int __export triton_init(const char *conf_file)
+ {
++	spinlock_init(&threads_lock);
++	spinlock_init(&ctx_list_lock);
++
+ 	ctx_pool = mempool_create(sizeof(struct _triton_context_t));
+ 	call_pool = mempool_create(sizeof(struct _triton_ctx_call_t));
+ 
+diff --git a/accel-pppd/triton/triton.h b/accel-pppd/triton/triton.h
+index e47eb36..71bb174 100644
+--- a/accel-pppd/triton/triton.h
++++ b/accel-pppd/triton/triton.h
+@@ -85,7 +85,7 @@ struct triton_context_t *triton_context_self(void);
+ #define MD_TRIG_LEVEL 1
+ 
+ void triton_md_register_handler(struct triton_context_t *, struct triton_md_handler_t *);
+-void triton_md_unregister_handler(struct triton_md_handler_t *h);
++void triton_md_unregister_handler(struct triton_md_handler_t *h, int close);
+ int triton_md_enable_handler(struct triton_md_handler_t *h, int mode);
+ int triton_md_disable_handler(struct triton_md_handler_t *h,int mode);
+ void triton_md_set_trig(struct triton_md_handler_t *h, int mode);
+diff --git a/accel-pppd/triton/triton_p.h b/accel-pppd/triton/triton_p.h
+index 443cede..9401729 100644
+--- a/accel-pppd/triton/triton_p.h
++++ b/accel-pppd/triton/triton_p.h
+@@ -41,6 +41,7 @@ struct _triton_context_t
+ 	int need_free;
+ 	int pending;
+ 	int priority;
++	int refs;
+ 
+ 	struct triton_context_t *ud;
+ 	void *bf_arg;
+@@ -107,5 +108,6 @@ int conf_reload(const char *fname);
+ void triton_log_error(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
+ void triton_log_debug(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
+ int load_modules(const char *name);
++void triton_context_release(struct _triton_context_t *ctx);
+ 
+ #endif
+diff --git a/accel-pppd/utils.c b/accel-pppd/utils.c
+index 45e8709..81b4c99 100644
+--- a/accel-pppd/utils.c
++++ b/accel-pppd/utils.c
+@@ -12,7 +12,8 @@ extern int urandom_fd;
+ 
+ void __export u_inet_ntoa(in_addr_t addr, char *str)
+ {
+-	sprintf(str, "%i.%i.%i.%i", addr & 0xff, (addr >> 8) & 0xff, (addr >> 16) & 0xff, (addr >> 24) & 0xff);
++	addr = ntohl(addr);
++	sprintf(str, "%i.%i.%i.%i", (addr >> 24) & 0xff, (addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff);
+ }
+ 
+ int __export u_readlong(long int *dst, const char *src,
+diff --git a/cmake/debian/debian.cmake b/cmake/debian/debian.cmake
+index 5ba44c8..c02a4a4 100644
+--- a/cmake/debian/debian.cmake
++++ b/cmake/debian/debian.cmake
+@@ -27,7 +27,13 @@ if (BUILD_DRIVER_ONLY)
+ else (BUILD_DRIVER_ONLY)
+ 	SET(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_CURRENT_SOURCE_DIR}/cmake/debian/postinst;${CMAKE_CURRENT_SOURCE_DIR}/cmake/debian/conffiles")
+ 
+-	INSTALL(FILES ${CMAKE_HOME_DIRECTORY}/accel-pppd/accel-ppp.conf DESTINATION /etc RENAME accel-ppp.conf.dist)
+-	INSTALL(FILES ${CMAKE_HOME_DIRECTORY}/contrib/debian/accel-ppp-init DESTINATION /etc/init.d RENAME accel-ppp)
+-	INSTALL(FILES ${CMAKE_HOME_DIRECTORY}/contrib/debian/accel-ppp-default DESTINATION /etc/default RENAME accel-ppp)
++	if (CPACK_TYPE STREQUAL Debian7)
++		INSTALL(FILES ${CMAKE_HOME_DIRECTORY}/accel-pppd/accel-ppp.conf DESTINATION /etc RENAME accel-ppp.conf.dist)
++		INSTALL(FILES ${CMAKE_HOME_DIRECTORY}/contrib/debian/accel-ppp-init DESTINATION /etc/init.d RENAME accel-ppp)
++		INSTALL(FILES ${CMAKE_HOME_DIRECTORY}/contrib/debian/accel-ppp-default DESTINATION /etc/default RENAME accel-ppp)
++	else (CPACK_TYPE STREQUAL Debian7)
++		INSTALL(FILES ${CMAKE_HOME_DIRECTORY}/accel-pppd/accel-ppp.conf DESTINATION ${CMAKE_BINARY_DIR}/_CPack_Packages/Linux/DEB/${CPACK_PACKAGE_FILE_NAME}/etc RENAME accel-ppp.conf.dist)
++		INSTALL(FILES ${CMAKE_HOME_DIRECTORY}/contrib/debian/accel-ppp-init DESTINATION ${CMAKE_BINARY_DIR}/_CPack_Packages/Linux/DEB/${CPACK_PACKAGE_FILE_NAME}/etc/init.d RENAME accel-ppp)
++		INSTALL(FILES ${CMAKE_HOME_DIRECTORY}/contrib/debian/accel-ppp-default DESTINATION ${CMAKE_BINARY_DIR}/_CPack_Packages/Linux/DEB/${CPACK_PACKAGE_FILE_NAME}/etc/default RENAME accel-ppp)
++	endif (CPACK_TYPE STREQUAL Debian7)
+ endif (BUILD_DRIVER_ONLY)
+diff --git a/drivers/ipoe/ipoe.c b/drivers/ipoe/ipoe.c
+index 4a1a798..cee7edb 100644
+--- a/drivers/ipoe/ipoe.c
++++ b/drivers/ipoe/ipoe.c
+@@ -17,6 +17,7 @@
+ #include <linux/if_vlan.h>
+ #include <linux/semaphore.h>
+ #include <linux/netfilter_ipv4.h>
++#include <linux/u64_stats_sync.h>
+ #include <linux/version.h>
+ 
+ #include <net/genetlink.h>
+@@ -38,6 +39,7 @@
+ #define HASH_BITS 0xff
+ 
+ #define IPOE_MAGIC 0x55aa
++#define IPOE_MAGIC2 0x67f8bc32
+ 
+ #define IPOE_QUEUE_LEN 100
+ #define IPOE_RATE_U 3000 //3s
+@@ -63,7 +65,6 @@ struct ipoe_session {
+ 
+ 	__be32 addr;
+ 	__be32 peer_addr;
+-	__be32 l4_redirect;
+ 	__u8 hwaddr[ETH_ALEN];
+ 
+ 	struct net_device *dev;
+@@ -102,10 +103,11 @@ struct ipoe_entry_u {
+ };
+ 
+ struct vlan_dev {
++	unsigned int magic;
++	int ifindex;
+ 	struct rcu_head rcu_head;
+ 	struct list_head entry;
+ 
+-	int ifindex;
+ 	spinlock_t lock;
+ 	unsigned long vid[4096/8/sizeof(long)];
+ };
+@@ -118,6 +120,7 @@ struct vlan_notify {
+ 
+ static struct list_head ipoe_list[HASH_BITS + 1];
+ static struct list_head ipoe_list1_u[HASH_BITS + 1];
++static struct list_head ipoe_excl_list[HASH_BITS + 1];
+ static LIST_HEAD(ipoe_list2);
+ static LIST_HEAD(ipoe_list2_u);
+ static DEFINE_SEMAPHORE(ipoe_wlock);
+@@ -144,7 +147,9 @@ static const struct net_device_ops ipoe_netdev_ops;
+ #endif
+ 
+ static struct genl_family ipoe_nl_family;
++#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+ static struct genl_multicast_group ipoe_nl_mcg;
++#endif
+ 
+ static inline int hash_addr(__be32 addr)
+ {
+@@ -191,6 +196,28 @@ static int ipoe_check_network(__be32 addr)
+ 	return r;
+ }
+ 
++static int ipoe_check_exclude(__be32 addr)
++{
++	struct ipoe_network *n;
++	struct list_head *ht;
++	int r = 0;
++	
++	ht = &ipoe_excl_list[hash_addr(addr)];
++
++	rcu_read_lock();
++
++	list_for_each_entry_rcu(n, ht, entry) {
++		if (addr  == n->addr) {
++			r = 1;
++			break;
++		}
++	}
++
++	rcu_read_unlock();
++
++	return r;
++}
++
+ static int ipoe_check_interface(int ifindex)
+ {
+ 	struct ipoe_iface *i;
+@@ -609,7 +636,11 @@ static void ipoe_process_queue(struct work_struct *w)
+ 			if (!report_skb) {
+ 				report_skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+ 				if (report_skb)
++#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+ 					header = genlmsg_put(report_skb, 0, ipoe_nl_mcg.id, &ipoe_nl_family, 0, IPOE_REP_PKT);
++#else
++					header = genlmsg_put(report_skb, 0, ipoe_nl_family.mcgrp_offset, &ipoe_nl_family, 0, IPOE_REP_PKT);
++#endif
+ 			}
+ 
+ 			if (report_skb) {
+@@ -632,7 +663,11 @@ static void ipoe_process_queue(struct work_struct *w)
+ 
+ 				if (nla_nest_end(report_skb, ns) >= IPOE_NLMSG_SIZE) {
+ 					genlmsg_end(report_skb, header);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+ 					genlmsg_multicast(report_skb, 0, ipoe_nl_mcg.id, GFP_KERNEL);
++#else
++					genlmsg_multicast(&ipoe_nl_family, report_skb, 0, 0, GFP_KERNEL);
++#endif
+ 					report_skb = NULL;
+ 					id = 1;
+ 				}
+@@ -668,7 +703,11 @@ nl_err:
+ 
+ 	if (report_skb) {
+ 		genlmsg_end(report_skb, header);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+ 		genlmsg_multicast(report_skb, 0, ipoe_nl_mcg.id, GFP_KERNEL);
++#else
++		genlmsg_multicast(&ipoe_nl_family, report_skb, 0, 0, GFP_KERNEL);
++#endif
+ 	}
+ 
+ 	if (!list_empty(&ipoe_list2_u))
+@@ -699,7 +738,11 @@ static struct ipoe_session *ipoe_lookup(__be32 addr)
+ 	return NULL;
+ }
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+ static unsigned int ipt_in_hook(unsigned int hook, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
++#else
++static unsigned int ipt_in_hook(const struct nf_hook_ops *ops, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
++#endif
+ {
+ 	struct ipoe_session *ses = NULL;
+ 	struct iphdr *iph;
+@@ -733,6 +776,9 @@ static unsigned int ipt_in_hook(unsigned int hook, struct sk_buff *skb, const st
+ 	ses = ipoe_lookup(iph->saddr);
+ 	
+ 	if (!ses) {
++		if (ipoe_check_exclude(iph->saddr))
++			return NF_ACCEPT;
++
+ 		if (!ipoe_check_network(iph->saddr))
+ 			return NF_ACCEPT;
+ 	
+@@ -801,7 +847,11 @@ out:
+ 	return ret;
+ }
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+ static unsigned int ipt_out_hook(unsigned int hook, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
++#else
++static unsigned int ipt_out_hook(const struct nf_hook_ops *ops, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
++#endif
+ {
+ 	int noff, iif;
+ 	struct iphdr *iph;
+@@ -822,6 +872,9 @@ static unsigned int ipt_out_hook(unsigned int hook, struct sk_buff *skb, const s
+ 	
+ 	iph = ip_hdr(skb);
+ 	
++	if (ipoe_check_exclude(iph->daddr))
++		return NF_ACCEPT;
++	
+ 	if (!ipoe_check_network(iph->daddr))
+ 		return NF_ACCEPT;
+ 	
+@@ -855,22 +908,23 @@ static int vlan_pt_recv(struct sk_buff *skb, struct net_device *dev, struct pack
+ 	struct vlan_notify *n;
+ 	int vid;
+ 
+-	if (!vlan_tx_tag_present(skb))
++	if (!dev->ml_priv)
+ 		goto out;
+ 
+-	vid = skb->vlan_tci & VLAN_VID_MASK;
+-	//pr_info("vid %i\n", vid);
++	if (!vlan_tx_tag_present(skb))
++		goto out;
+ 
+ 	rcu_read_lock();
+-	list_for_each_entry_rcu(d, &vlan_devices, entry) {
+-		if (d->ifindex == dev->ifindex)
+-			goto found;
++
++	d = rcu_dereference(dev->ml_priv);
++	if (!d || d->magic != IPOE_MAGIC2 || d->ifindex != dev->ifindex) {
++		rcu_read_unlock();
++		goto out;
+ 	}
+-	rcu_read_unlock();
+-	goto out;
+ 
+-found:
+-	//pr_info("found %i\n", d->ifindex);
++	vid = skb->vlan_tci & VLAN_VID_MASK;
++	//pr_info("vid %i\n", vid);
++
+ 	if (d->vid[vid / (8*sizeof(long))] & (1lu << (vid % (8*sizeof(long)))))
+ 		vid = -1;
+ 	else {
+@@ -883,7 +937,7 @@ found:
+ 	if (vid == -1)
+ 		goto out;
+ 	
+-	//pr_info("queue %i %i\n", d->ifindex, vid);
++	//pr_info("queue %i %i\n", dev->ifindex, vid);
+ 	
+ 	n = kmalloc(sizeof(*n), GFP_ATOMIC);
+ 	if (!n)
+@@ -929,7 +983,11 @@ static void vlan_do_notify(struct work_struct *w)
+ 	
+ 		if (!report_skb) {
+ 			report_skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+ 			header = genlmsg_put(report_skb, 0, ipoe_nl_mcg.id, &ipoe_nl_family, 0, IPOE_VLAN_NOTIFY);
++#else
++			header = genlmsg_put(report_skb, 0, ipoe_nl_family.mcgrp_offset, &ipoe_nl_family, 0, IPOE_VLAN_NOTIFY);
++#endif
+ 		}
+ 
+ 		//pr_info("notify %i vlan %i\n", id, n->vid);
+@@ -954,7 +1012,11 @@ static void vlan_do_notify(struct work_struct *w)
+ 				
+ 		if (nla_nest_end(report_skb, ns) >= IPOE_NLMSG_SIZE) {
+ 			genlmsg_end(report_skb, header);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+ 			genlmsg_multicast(report_skb, 0, ipoe_nl_mcg.id, GFP_KERNEL);
++#else
++			genlmsg_multicast(&ipoe_nl_family, report_skb, 0, 0, GFP_KERNEL);
++#endif
+ 			report_skb = NULL;
+ 			id = 1;
+ 		}
+@@ -969,7 +1031,11 @@ nl_err:
+ 
+ 	if (report_skb) {
+ 		genlmsg_end(report_skb, header);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+ 		genlmsg_multicast(report_skb, 0, ipoe_nl_mcg.id, GFP_KERNEL);
++#else
++		genlmsg_multicast(&ipoe_nl_family, report_skb, 0, 0, GFP_KERNEL);
++#endif
+ 	}
+ }
+ 
+@@ -1520,6 +1586,7 @@ static int ipoe_nl_cmd_add_net(struct sk_buff *skb, struct genl_info *info)
+ 
+ 	n->addr = nla_get_u32(info->attrs[IPOE_ATTR_ADDR]);
+ 	n->mask = nla_get_u32(info->attrs[IPOE_ATTR_MASK]);
++	n->addr = ntohl(n->addr) & n->mask;
+ 	//pr_info("add net %08x/%08x\n", n->addr, n->mask);
+ 
+ 	down(&ipoe_wlock);
+@@ -1558,6 +1625,89 @@ static int ipoe_nl_cmd_del_net(struct sk_buff *skb, struct genl_info *info)
+ 	return 0;
+ }
+ 
++static int ipoe_nl_cmd_add_exclude(struct sk_buff *skb, struct genl_info *info)
++{
++	struct ipoe_network *n;
++	struct list_head *ht;
++
++	if (!info->attrs[IPOE_ATTR_ADDR])
++		return -EINVAL;
++	
++	n = kmalloc(sizeof(*n), GFP_KERNEL);
++	if (!n)
++		return -ENOMEM;
++
++	n->addr = nla_get_u32(info->attrs[IPOE_ATTR_ADDR]);
++
++	ht = &ipoe_excl_list[hash_addr(n->addr)];
++
++	down(&ipoe_wlock);
++	list_add_tail_rcu(&n->entry, ht);
++	up(&ipoe_wlock);
++
++	return 0;
++}
++
++static void clean_excl_list(void)
++{
++	struct ipoe_network *n;
++	struct list_head *ht;
++	int i;
++
++	down(&ipoe_wlock);
++	rcu_read_lock();
++	for (i = 0; i <= HASH_BITS; i++) {
++		ht = &ipoe_excl_list[i];
++		list_for_each_entry_rcu(n, ht, entry) {
++			list_del_rcu(&n->entry);
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
++			kfree_rcu(n, rcu_head);
++#else
++			call_rcu(&n->rcu_head, ipoe_kfree_rcu);
++#endif
++		}
++	}
++	rcu_read_unlock();
++	up(&ipoe_wlock);
++}
++
++static int ipoe_nl_cmd_del_exclude(struct sk_buff *skb, struct genl_info *info)
++{
++	struct list_head *ht;
++	struct ipoe_network *n;
++	u32 addr;
++
++	if (!info->attrs[IPOE_ATTR_ADDR])
++		return -EINVAL;
++	
++	addr = nla_get_u32(info->attrs[IPOE_ATTR_ADDR]);
++	if (!addr) {
++		clean_excl_list();
++		return 0;
++	}
++
++	ht = &ipoe_excl_list[hash_addr(addr)];
++
++	down(&ipoe_wlock);
++	rcu_read_lock();
++	list_for_each_entry_rcu(n, ht, entry) {
++		if (n->addr == addr) {
++			list_del_rcu(&n->entry);
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
++			kfree_rcu(n, rcu_head);
++#else
++			call_rcu(&n->rcu_head, ipoe_kfree_rcu);
++#endif
++		}
++	}
++	rcu_read_unlock();
++	up(&ipoe_wlock);
++	
++	synchronize_rcu();
++
++	return 0;
++}
++
+ static int ipoe_nl_cmd_add_interface(struct sk_buff *skb, struct genl_info *info)
+ {
+ 	struct ipoe_iface *i;
+@@ -1628,13 +1778,22 @@ static int ipoe_nl_cmd_add_vlan_mon(struct sk_buff *skb, struct genl_info *info)
+ 
+ 	if (!dev)
+ 		return -ENODEV;
+-	
++
++	down(&ipoe_wlock);
++	if (dev->ml_priv) {
++		up(&ipoe_wlock);
++		dev_put(dev);
++		return -EBUSY;
++	}
++
+ 	d = kzalloc(sizeof(*d), GFP_KERNEL);
+ 	if (!d) {
++		up(&ipoe_wlock);
+ 		dev_put(dev);
+ 		return -ENOMEM;
+ 	}
+ 
++	d->magic = IPOE_MAGIC2;
+ 	d->ifindex = ifindex;
+ 	spin_lock_init(&d->lock);
+ 
+@@ -1658,12 +1817,13 @@ static int ipoe_nl_cmd_add_vlan_mon(struct sk_buff *skb, struct genl_info *info)
+ #endif
+ 	}
+ 
+-	dev_put(dev);
++	rcu_assign_pointer(dev->ml_priv, d);
+ 
+-	down(&ipoe_wlock);
+ 	list_add_tail_rcu(&d->entry, &vlan_devices);
+ 	up(&ipoe_wlock);
+ 
++	dev_put(dev);
++
+ 	return 0;
+ }
+ 
+@@ -1690,25 +1850,30 @@ static int ipoe_nl_cmd_add_vlan_mon_vid(struct sk_buff *skb, struct genl_info *i
+ 
+ 	if (!dev)
+ 		return -ENODEV;
+-	
++
+ 	down(&ipoe_wlock);
+-	list_for_each_entry(d, &vlan_devices, entry) {
+-		if (d->ifindex == ifindex) {
+-			spin_lock_irqsave(&d->lock, flags);
+-			d->vid[vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
+-			spin_unlock_irqrestore(&d->lock, flags);
++
++	if (!dev->ml_priv) {
++		up(&ipoe_wlock);
++		dev_put(dev);
++		return -EINVAL;
++	}
++
++	d = dev->ml_priv;
++
++	spin_lock_irqsave(&d->lock, flags);
++	d->vid[vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
++	spin_unlock_irqrestore(&d->lock, flags);
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
+-			if (dev->features & NETIF_F_HW_VLAN_FILTER)
+-				dev->netdev_ops->ndo_vlan_rx_add_vid(dev, vid);
++	if (dev->features & NETIF_F_HW_VLAN_FILTER)
++		dev->netdev_ops->ndo_vlan_rx_add_vid(dev, vid);
+ #else
+-			if (dev->features & NETIF_F_HW_VLAN_CTAG_FILTER)
+-				dev->netdev_ops->ndo_vlan_rx_add_vid(dev, htons(ETH_P_8021Q), vid);
++	if (dev->features & NETIF_F_HW_VLAN_CTAG_FILTER)
++		dev->netdev_ops->ndo_vlan_rx_add_vid(dev, htons(ETH_P_8021Q), vid);
+ #endif
+-			break;
+-		}
+-	}
++
+ 	up(&ipoe_wlock);
+-	
++
+ 	dev_put(dev);
+ 
+ 	return 0;
+@@ -1721,16 +1886,31 @@ static int ipoe_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *info)
+ 	int ifindex;
+ 	unsigned long flags;
+ 	struct list_head *pos, *n;
++	struct net_device *dev;
+ 
+ 	if (info->attrs[IPOE_ATTR_IFINDEX])
+ 		ifindex = nla_get_u32(info->attrs[IPOE_ATTR_IFINDEX]);
+ 	else
+ 		ifindex = -1;
+ 
+-	rcu_read_lock();
+-	list_for_each_entry_rcu(d, &vlan_devices, entry) {
++	down(&ipoe_wlock);
++	list_for_each_entry(d, &vlan_devices, entry) {
+ 		if (ifindex == -1 || d->ifindex == ifindex) {
+ 			//pr_info("del net %08x/%08x\n", n->addr, n->mask);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
++			rtnl_lock();
++			dev = __dev_get_by_index(&init_net, d->ifindex);
++			rtnl_unlock();
++#else
++			dev = dev_get_by_index(&init_net, d->ifindex);
++#endif
++
++			if (dev) {
++				if (dev->ml_priv == d)
++					rcu_assign_pointer(dev->ml_priv, NULL);
++				dev_put(dev);
++			}
++
+ 			list_del_rcu(&d->entry);
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
+ 			kfree_rcu(d, rcu_head);
+@@ -1739,7 +1919,7 @@ static int ipoe_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *info)
+ #endif
+ 		}
+ 	}
+-	rcu_read_unlock();
++	up(&ipoe_wlock);
+ 
+ 	spin_lock_irqsave(&vlan_lock, flags);
+ 	list_for_each_safe(pos, n, &vlan_notifies) {
+@@ -1839,6 +2019,18 @@ static struct genl_ops ipoe_nl_ops[] = {
+ 		.policy = ipoe_nl_policy,
+ 		.flags = GENL_ADMIN_PERM,
+ 	},
++	{
++		.cmd = IPOE_CMD_ADD_EXCLUDE,
++		.doit = ipoe_nl_cmd_add_exclude,
++		.policy = ipoe_nl_policy,
++		.flags = GENL_ADMIN_PERM,
++	},
++	{
++		.cmd = IPOE_CMD_DEL_EXCLUDE,
++		.doit = ipoe_nl_cmd_del_exclude,
++		.policy = ipoe_nl_policy,
++		.flags = GENL_ADMIN_PERM,
++	},
+ };
+ 
+ static struct genl_family ipoe_nl_family = {
+@@ -1849,16 +2041,13 @@ static struct genl_family ipoe_nl_family = {
+ 	.maxattr	= IPOE_ATTR_MAX,
+ };
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+ static struct genl_multicast_group ipoe_nl_mcg = {
+ 	.name = IPOE_GENL_MCG_PKT,
+ };
+-
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32)
+-static const struct net_device_ops ipoe_netdev_ops = {
+-	.ndo_start_xmit	= ipoe_xmit,
+-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
+-	.ndo_get_stats64 = ipoe_stats64,
+-#endif
++#else
++static struct genl_multicast_group ipoe_nl_mcgs[] = {
++	{ .name = IPOE_GENL_MCG_PKT, }
+ };
+ #endif
+ 
+@@ -1891,6 +2080,15 @@ static struct packet_type vlan_pt __read_mostly = {
+ 	.func = vlan_pt_recv,
+ };
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32)
++static const struct net_device_ops ipoe_netdev_ops = {
++	.ndo_start_xmit	= ipoe_xmit,
++#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
++	.ndo_get_stats64 = ipoe_stats64,
++#endif
++};
++#endif
++
+ /*static struct pernet_operations ipoe_net_ops = {
+ 	.init = ipoe_init_net,
+ 	.exit = ipoe_exit_net,
+@@ -1902,14 +2100,15 @@ static int __init ipoe_init(void)
+ {
+ 	int err, i;
+ 
+-	printk("IPoE session driver v1.8.0\n");
++	printk("IPoE session driver v1.8.0.3\n");
+ 
+ 	/*err = register_pernet_device(&ipoe_net_ops);
+ 	if (err < 0)
+ 		return err;*/
+-	for (i = 0; i < HASH_BITS + 1; i++) {
++	for (i = 0; i <= HASH_BITS; i++) {
+ 		INIT_LIST_HEAD(&ipoe_list[i]);
+ 		INIT_LIST_HEAD(&ipoe_list1_u[i]);
++		INIT_LIST_HEAD(&ipoe_excl_list[i]);
+ 	}
+ 	
+ 	skb_queue_head_init(&ipoe_queue);
+@@ -1935,19 +2134,24 @@ static int __init ipoe_init(void)
+ 		goto out_unreg;
+ 	}
+ #else
+-	err = genl_register_family_with_ops(&ipoe_nl_family, ipoe_nl_ops,
+-					    ARRAY_SIZE(ipoe_nl_ops));
++#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
++	err = genl_register_family_with_ops(&ipoe_nl_family, ipoe_nl_ops, ARRAY_SIZE(ipoe_nl_ops));
++#else
++	err = genl_register_family_with_ops_groups(&ipoe_nl_family, ipoe_nl_ops, ipoe_nl_mcgs);
++#endif
+ 	if (err < 0) {
+ 		printk(KERN_INFO "ipoe: can't register netlink interface\n");
+ 		goto out;
+ 	}
+ #endif
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+ 	err = genl_register_mc_group(&ipoe_nl_family, &ipoe_nl_mcg);
+ 	if (err < 0) {
+ 		printk(KERN_INFO "ipoe: can't register netlink multicast group\n");
+ 		goto out_unreg;
+ 	}
++#endif
+ 
+ 	err = nf_register_hooks(ipt_ops, ARRAY_SIZE(ipt_ops));
+ 	if (err < 0) {
+@@ -1972,12 +2176,15 @@ static void __exit ipoe_fini(void)
+ 	struct ipoe_session *ses;
+ 	struct vlan_dev *d;
+ 	struct vlan_notify *vn;
++	struct net_device *dev;
+ 	int i;
+ 	
+ 	dev_remove_pack(&vlan_pt);
+ 	nf_unregister_hooks(ipt_ops, ARRAY_SIZE(ipt_ops));
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+ 	genl_unregister_mc_group(&ipoe_nl_family, &ipoe_nl_mcg);
++#endif
+ 	genl_unregister_family(&ipoe_nl_family);
+ 
+ 	flush_work(&ipoe_queue_work);
+@@ -1988,7 +2195,7 @@ static void __exit ipoe_fini(void)
+ 	down(&ipoe_wlock);
+ 	up(&ipoe_wlock);
+ 
+-	for (i = 0; i < HASH_BITS; i++)
++	for (i = 0; i <= HASH_BITS; i++)
+ 		rcu_assign_pointer(ipoe_list[i].next, &ipoe_list[i]);
+ 	
+ 	rcu_barrier();
+@@ -2017,8 +2224,21 @@ static void __exit ipoe_fini(void)
+ 
+ 	while (!list_empty(&vlan_devices)) {
+ 		d = list_first_entry(&vlan_devices, typeof(*d), entry);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
++		rtnl_lock();
++		dev = __dev_get_by_index(&init_net, d->ifindex);
++		rtnl_unlock();
++#else
++		dev = dev_get_by_index(&init_net, d->ifindex);
++#endif
++		if (dev)
++			rcu_assign_pointer(dev->ml_priv, NULL);
+ 		list_del(&d->entry);
+-		kfree(d);
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
++		kfree_rcu(d, rcu_head);
++#else
++		call_rcu(&d->rcu_head, ipoe_kfree_rcu);
++#endif
+ 	}
+ 	
+ 	while (!list_empty(&vlan_notifies)) {
+@@ -2026,6 +2246,10 @@ static void __exit ipoe_fini(void)
+ 		list_del(&vn->entry);
+ 		kfree(vn);
+ 	}
++
++	clean_excl_list();
++
++	synchronize_rcu();
+ }
+ 
+ module_init(ipoe_init);
+diff --git a/drivers/ipoe/ipoe.h b/drivers/ipoe/ipoe.h
+index 7296505..192fa2f 100644
+--- a/drivers/ipoe/ipoe.h
++++ b/drivers/ipoe/ipoe.h
+@@ -18,6 +18,8 @@ enum {
+ 	IPOE_CMD_DEL_VLAN_MON,
+ 	IPOE_REP_PKT,
+ 	IPOE_VLAN_NOTIFY,
++	IPOE_CMD_ADD_EXCLUDE,
++	IPOE_CMD_DEL_EXCLUDE,
+ 	__IPOE_CMD_MAX,
+ };
+ 
