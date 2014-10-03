@@ -58,10 +58,14 @@ require-mppe-40
 # client. See KB311218 in Microsoft's knowledge base for more information.
 #ms-dns 10.0.0.1
 #ms-dns 10.0.0.2
-#ms-dns 8.8.8.8
-#ms-dns 8.8.4.4
-ms-dns 208.67.222.222
-ms-dns 208.67.220.220
+ms-dns 216.146.35.35
+ms-dns 216.146.36.36
+#ms-dns 208.67.222.222
+#ms-dns 208.67.220.220
+#ms-dns 129.250.35.250
+#ms-dns 61.122.116.179
+#ms-dns 202.224.32.1
+#ms-dns 202.224.32.2
 
 # If pppd is acting as a server for Microsoft Windows or "Samba"
 # clients, this option allows pppd to supply one or two WINS (Windows
