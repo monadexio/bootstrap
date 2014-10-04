@@ -8,3 +8,5 @@ lp
 rtc
 pptp
 pppoe
+tcp_htcp
+tcp_hybla
