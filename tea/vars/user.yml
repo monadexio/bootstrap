@@ -1,0 +1,11 @@
+---
+###############################################################################
+# Set your variables here.
+# For a complete reference look at the `vars/defaults.yml` file.
+###############################################################################
+
+# common
+domain: TODO.com
+main_user_name: TODO
+
+# vpn

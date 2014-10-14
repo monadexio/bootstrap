@@ -1,0 +1,99 @@
+---
+# Installs the PPTP virtual private network server.
+# ref: https://wiki.archlinux.org/index.php/PPTP_server
+
+- name: Install PPTP and related from apt
+  apt: pkg={{ item }} state=installed
+  with_items:
+    - squid3
+    - pdnsd
+    - pptpd
+
+- name: Copy rc.local with firewall rules into place
+  template: src=etc_rc.local dest=/etc/rc.local
+
+- name: Enable IPv4 traffic forwarding
+  sysctl: name=net.ipv4.ip_forward value=1
+
+- name: Update modules to load tcp_hybla at boot time
+  lineinfile:
+    dest=/etc/modules
+    line="tcp_hybla"
+    regexp="^tcp_hybla"
+    insertafter=EOF
+    state=present
+    create=True
+
+- name: Load tcp_hybla module
+  command: modprobe tcp_hybla
+
+- name: Set tcp congestion control algorithm to hybla
+  sysctl: name=net.ipv4.tcp_congestion_control value=hybla
+
+- name: Disable pdnsd through the public interface
+  command: "{{ item }}"
+  with_items:
+    - iptables -A INPUT -i eth0 -p tcp -m tcp --dport 53 -j DROP
+    - iptables -A INPUT -i eth0 -p udp -m udp --dport 53 -j DROP
+
+- name: Copy pdnsd negative adserver configuration file into place
+  copy: src=etc_pdnsd.adservers dest=/etc/pdnsd.adservers
+
+- name: Update pdnsd default to start daemon
+  lineinfile:
+    dest=/etc/default/pdnsd
+    regexp=^START_DAEMON
+    line="START_DAEMON=yes"
+    state=present
+
+- name: Copy pdnsd configuration file into place
+  copy: src=etc_pdnsd.conf dest=/etc/pdnsd.conf
+  notify: restart pdnsd
+
+- name: Disable squid through the public interface
+  command: "{{ item }}"
+  with_items:
+    - iptables -A INPUT -i eth0 -p tcp -m tcp --dport 1983 -j DROP
+    - iptables -A INPUT -i eth0 -p udp -m udp --dport 1983 -j DROP
+
+- name: Redirect http traffic to squid
+  command: "{{ item }}"
+  with_items:
+    - iptables -t nat -A PREROUTING -i ppp+ -p tcp -m tcp --dport 80 -j REDIRECT --to-ports 1983 
+
+- name: Copy squid configuration file into place
+  copy: src=etc_squid3_squid.conf dest=/etc/squid3/squid.conf
+  notify: restart squid3
+
+- meta: flush_handlers
+
+- name: Allow PPTP through the firewall
+  command: "{{ item }}"
+  with_items:
+      # Accept all packets via ppp* interfaces (for example, ppp0)
+    - iptables -A INPUT -i ppp+ -j ACCEPT
+    - iptables -A OUTPUT -o ppp+ -j ACCEPT
+      # Accept incoming connections to port 1723 (PPTP)
+    - iptables -A INPUT -p tcp --dport 1723 -j ACCEPT
+      # Accept GRE packets
+    - iptables -A INPUT -p 47 -j ACCEPT
+    - iptables -A OUTPUT -p 47 -j ACCEPT
+      # Enable IP forwarding
+    - iptables -F FORWARD
+    - iptables -A FORWARD -j ACCEPT
+      # Enable NAT for eth0 и ppp* interfaces
+    - iptables -A POSTROUTING -t nat -o eth0 -j MASQUERADE
+    - iptables -A POSTROUTING -t nat -o ppp+ -j MASQUERADE
+
+- name: Allow PPTP through ufw
+  ufw: rule=allow port={{ pptp_port }} proto={{ pptp_protocol }}
+
+- name: Copy PPTP options file into place
+  copy: src=etc_ppp_pptpd-options dest=/etc/ppp/pptpd-options
+
+- name: Copy PPTP chap secrets file into place
+  copy: src=etc_ppp_chap-secrets dest=/etc/ppp/chap-secrets
+
+- name: Copy PPTP configuration file into place
+  copy: src=etc_pptpd.conf dest=/etc/pptpd.conf
+  notify: restart pptpd

@@ -1,0 +1,40 @@
+---
+# Defines tasks applicable across all machines in the infrastructure.
+
+- name: Update apt cache
+  apt: update_cache=yes
+
+- name: Upgrade all safe packages
+  apt: upgrade=safe
+
+- name: Install necessities and nice-to-haves
+  apt: pkg={{ item }} state=installed
+  with_items:
+    - apt-transport-https
+    - apticron
+    - build-essential
+    - debian-goodies
+    - git
+    - htop
+    - iftop
+    - iotop
+    - mosh
+    - python-software-properties
+    - ruby1.9.3
+    - screen
+    - sudo
+    - update-notifier-common
+    - vim
+    - zsh
+
+- name: Install unattended upgrades (Debian/Ubuntu only)
+  apt: pkg=unattended-upgrades state=installed
+  when: ansible_distribution == 'Debian' or ansible_distribution == 'Ubuntu'
+
+- name: Apticron email configuration
+  template: src=apticron.conf.j2 dest=/etc/apticron/apticron.conf
+
+- include: users.yml tags=users
+- include: ufw.yml tags=ufw
+- include: security.yml tags=security
+- include: ntp.yml tags=ntp

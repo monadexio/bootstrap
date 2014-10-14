@@ -1,0 +1,5 @@
+check process squid3 with pidfile /var/run/squid3.pid
+  start program "/etc/init.d/squid3 start"
+  stop program "/etc/init.d/squid3 stop"
+  if failed host 127.0.0.1 port 1988 then restart
+  if 5 restarts within 5 cycles then timeout

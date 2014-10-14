@@ -1,0 +1,8 @@
+- name: restart pdnsd
+  service: name=pdnsd state=restarted
+
+- name: restart squid3
+  service: name=squid3 state=restarted
+
+- name: restart pptpd
+  service: name=pptpd state=restarted

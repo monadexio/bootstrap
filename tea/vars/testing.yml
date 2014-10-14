@@ -1,0 +1,13 @@
+---
+###############################################################################
+# Variables used when testing with Vagrant
+# For a complete reference look at the `vars/defaults.yml` file.
+###############################################################################
+
+# common
+domain: tea.local
+main_user_name: tea
+friendly_networks:
+  - "172.16.88.0/24"
+
+# vpn
