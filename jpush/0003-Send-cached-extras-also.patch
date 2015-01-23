@@ -1,0 +1,118 @@
+From 8e43aa6ff4fb58f94b6ba1d7475624a9a0924a31 Mon Sep 17 00:00:00 2001
+From: Jacky Hu <hudayou@hotmail.com>
+Date: Fri, 23 Jan 2015 22:35:13 +0800
+Subject: [PATCH 3/3] Send cached extras also
+
+---
+ .../android/src/cn/jpush/phonegap/JPushPlugin.java | 63 +++++++++++++++++-----
+ 1 file changed, 50 insertions(+), 13 deletions(-)
+
+diff --git a/platforms/android/src/cn/jpush/phonegap/JPushPlugin.java b/platforms/android/src/cn/jpush/phonegap/JPushPlugin.java
+index e459e26..949c6e0 100644
+--- a/platforms/android/src/cn/jpush/phonegap/JPushPlugin.java
++++ b/platforms/android/src/cn/jpush/phonegap/JPushPlugin.java
+@@ -10,6 +10,8 @@ import java.util.Set;
+ import java.util.concurrent.ExecutorService;
+ import java.util.concurrent.Executors;
+ 
++import android.util.Log;
++
+ import org.apache.cordova.CallbackContext;
+ import org.apache.cordova.CordovaInterface;
+ import org.apache.cordova.CordovaPlugin;
+@@ -28,6 +30,7 @@ import cn.jpush.android.data.JPushLocalNotification;
+ import cn.jpush.android.api.TagAliasCallback;
+ 
+ public class JPushPlugin extends CordovaPlugin {
++	public static final String TAG = "JPushPlugin";
+ 	private final static List<String> methodList = 
+ 			Arrays.asList(
+ 					"getRegistrationID",
+@@ -53,6 +56,10 @@ public class JPushPlugin extends CordovaPlugin {
+ 	private ExecutorService threadPool = Executors.newFixedThreadPool(1);
+ 	private static JPushPlugin instance;
+ 
++	private static String gECB;
++	private static CordovaWebView gWebView;
++	private static JSONObject gCachedExtras = null;
++
+ 	public static String notificationAlert;
+ 	public static Map<String, Object> notificationExtras=new HashMap<String, Object>();
+ 
+@@ -127,20 +134,8 @@ public class JPushPlugin extends CordovaPlugin {
+ 		}
+ 	}
+ 	static void transmitOpen(String alert, Map<String, Object> extras) {
+-		if (instance == null) {
+-			return;
+-		}
+ 		JSONObject data = openNotificationObject(alert, extras);
+-		String js = String
+-				.format("javascript:angular.element(document.querySelector('[ng-app]')).injector().get('$jPush').onNotification('%s');",
+-						data.toString());
+-		try {
+-			instance.webView.sendJavascript(js);
+-		} catch (NullPointerException e) {
+-
+-		} catch (Exception e) {
+-
+-		}
++		sendExtras(data);
+ 	}
+ 	@Override
+ 	public boolean execute(final String action, final JSONArray data,
+@@ -165,9 +160,51 @@ public class JPushPlugin extends CordovaPlugin {
+ 	
+ 	void init(JSONArray data,CallbackContext callbackContext){
+ 		JPushInterface.init(this.cordova.getActivity().getApplicationContext());
++		gWebView = this.webView;
++		gECB = "angular.element(document.querySelector('[ng-app]')).injector().get('$jPush').onNotification";
++		if ( gCachedExtras != null) {
++			Log.v(TAG, "sending cached extras");
++			sendExtras(gCachedExtras);
++			gCachedExtras = null;
++		}
+ 		//callbackContext.success();
+ 	}
++
++
++	/*
++	 * Sends a json object to the client as parameter to a method which is defined in gECB.
++	 */
++	public static void sendJavascript(JSONObject _json) {
++		String _d = "javascript:" + gECB + "(" + _json.toString() + ")";
++		Log.v(TAG, "sendJavascript: " + _d);
++
++		if (gWebView != null) {
++			gWebView.sendJavascript(_d);
++		}
++	}
++	/*
++	 * Sends the pushbundle extras to the client application.
++	 * If the client application isn't currently active, it is cached for later processing.
++	 */
++	public static void sendExtras(JSONObject extras)
++	{
++		if (extras != null) {
++			if (gECB != null && gWebView != null) {
++				sendJavascript(extras);
++			} else {
++				Log.v(TAG, "sendExtras: caching extras to send at a later time.");
++				gCachedExtras = extras;
++			}
++		}
++	}
+ 	
++	@Override
++	public void onDestroy() {
++		super.onDestroy();
++		gECB = null;
++		gWebView = null;
++	}
++
+ 	void setDebugMode(JSONArray data, CallbackContext callbackContext) {
+ 		boolean mode;
+ 		try {
+-- 
+1.9.3 (Apple Git-50)
+
